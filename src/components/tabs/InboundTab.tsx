@@ -25,12 +25,13 @@ export function InboundTab() {
   const { data: inboundData, refetch: refetchData } = useQuery({
     queryKey: ['inbound-units', filters.excludedFileIds],
     queryFn: async () => {
-      let query = supabase
+      // Fetch all units - use range to bypass 1000 row limit
+      const { data, error, count } = await supabase
         .from('units_canonical')
-        .select('trgid, received_on, checked_in_on, file_upload_id')
-        .not('received_on', 'is', null);
+        .select('trgid, received_on, checked_in_on, file_upload_id', { count: 'exact' })
+        .not('received_on', 'is', null)
+        .range(0, 50000);
       
-      const { data, error } = await query;
       if (error) throw error;
       
       // Filter out excluded files if needed
