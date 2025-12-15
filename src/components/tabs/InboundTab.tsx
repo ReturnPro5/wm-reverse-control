@@ -21,15 +21,31 @@ export function InboundTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { filters } = useFilters();
   
-  // Fetch inbound data from units_canonical for accurate unit counts
-  const { data: inboundData, refetch: refetchData } = useQuery({
-    queryKey: ['inbound-units', filters.excludedFileIds],
+  // First get inbound file IDs
+  const { data: inboundFileIds } = useQuery({
+    queryKey: ['inbound-file-ids'],
     queryFn: async () => {
-      // Fetch all units - use range to bypass 1000 row limit
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
+        .from('file_uploads')
+        .select('id')
+        .eq('file_type', 'Inbound');
+      if (error) throw error;
+      return data?.map(f => f.id) || [];
+    },
+  });
+
+  // Fetch inbound data from units_canonical - only for Inbound file uploads
+  const { data: inboundData, refetch: refetchData } = useQuery({
+    queryKey: ['inbound-units', filters.excludedFileIds, inboundFileIds],
+    queryFn: async () => {
+      if (!inboundFileIds || inboundFileIds.length === 0) return [];
+      
+      // Fetch units only from Inbound file uploads
+      const { data, error } = await supabase
         .from('units_canonical')
-        .select('trgid, received_on, checked_in_on, file_upload_id', { count: 'exact' })
+        .select('trgid, received_on, checked_in_on, file_upload_id')
         .not('received_on', 'is', null)
+        .in('file_upload_id', inboundFileIds)
         .range(0, 50000);
       
       if (error) throw error;
@@ -37,6 +53,7 @@ export function InboundTab() {
       // Filter out excluded files if needed
       return data?.filter(d => !filters.excludedFileIds.includes(d.file_upload_id || '')) || [];
     },
+    enabled: !!inboundFileIds && inboundFileIds.length > 0,
   });
 
   const refetch = () => {
