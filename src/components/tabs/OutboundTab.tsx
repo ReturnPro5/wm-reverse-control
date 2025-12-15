@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { FeeBreakdown } from '@/components/dashboard/FeeBreakdown';
+import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
 import { Truck, DollarSign, Package, Receipt } from 'lucide-react';
 import { 
   BarChart, 
@@ -10,10 +9,9 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer,
-  Legend
+  ResponsiveContainer
 } from 'recharts';
-import { FeeMetrics } from '@/hooks/useDashboardData';
+import { useFilterOptions, useFilteredFees } from '@/hooks/useFilteredData';
 
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -22,21 +20,16 @@ const formatCurrency = (value: number) => {
 };
 
 export function OutboundTab() {
-  // Fetch fee data
-  const { data: feeData } = useQuery({
-    queryKey: ['outbound-fee-metrics'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('fee_metrics')
-        .select('*');
+  const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
+  const { data: feeData, refetch: refetchData } = useFilteredFees();
 
-      if (error) throw error;
-      return data;
-    },
-  });
+  const refetch = () => {
+    refetchOptions();
+    refetchData();
+  };
 
   // Calculate aggregated metrics
-  const metrics: FeeMetrics = {
+  const metrics = {
     totalFees: feeData?.reduce((sum, r) => sum + (Number(r.total_fees) || 0), 0) || 0,
     checkInFees: feeData?.reduce((sum, r) => sum + (Number(r.check_in_fee) || 0), 0) || 0,
     packagingFees: feeData?.reduce((sum, r) => sum + (Number(r.packaging_fee) || 0), 0) || 0,
@@ -57,12 +50,36 @@ export function OutboundTab() {
     { name: 'Marketplace', value: metrics.marketplaceFees },
   ].filter(d => d.value > 0);
 
+  const options = filterOptions || {
+    programs: [],
+    masterPrograms: [],
+    categories: [],
+    facilities: [],
+    locations: [],
+    ownerships: [],
+    marketplaces: [],
+    fileTypes: [],
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold">Outbound & Fees</h2>
         <p className="text-muted-foreground">Fee tracking from Outbound files - never netted against sales</p>
       </div>
+
+      {/* Global Filters */}
+      <GlobalFilterBar
+        programs={options.programs}
+        masterPrograms={options.masterPrograms}
+        categories={options.categories}
+        facilities={options.facilities}
+        locations={options.locations}
+        ownerships={options.ownerships}
+        marketplaces={options.marketplaces}
+        fileTypes={options.fileTypes}
+        onRefresh={refetch}
+      />
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-4">

@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { KPICard } from '@/components/dashboard/KPICard';
+import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
 import { Package, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 import { 
   BarChart, 
@@ -12,31 +11,28 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
+import { useFilterOptions, useFilteredLifecycleEvents } from '@/hooks/useFilteredData';
 
 export function InboundTab() {
-  // Fetch inbound lifecycle events
-  const { data: inboundData } = useQuery({
-    queryKey: ['inbound-metrics'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('lifecycle_events')
-        .select('*')
-        .in('stage', ['Received', 'CheckedIn'])
-        .order('event_date', { ascending: false });
+  const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
+  const { data: inboundData, refetch: refetchData } = useFilteredLifecycleEvents();
 
-      if (error) throw error;
-      return data;
-    },
-  });
+  const refetch = () => {
+    refetchOptions();
+    refetchData();
+  };
+
+  // Filter to inbound stages only
+  const inboundEvents = inboundData?.filter(e => e.stage === 'Received' || e.stage === 'CheckedIn') || [];
 
   // Calculate metrics
-  const receivedCount = inboundData?.filter(e => e.stage === 'Received').length || 0;
-  const checkedInCount = inboundData?.filter(e => e.stage === 'CheckedIn').length || 0;
+  const receivedCount = inboundEvents.filter(e => e.stage === 'Received').length;
+  const checkedInCount = inboundEvents.filter(e => e.stage === 'CheckedIn').length;
   const checkInRate = receivedCount > 0 ? (checkedInCount / receivedCount) * 100 : 0;
 
   // Group by date for chart
-  const dailyData = inboundData?.reduce((acc, event) => {
+  const dailyData = inboundEvents.reduce((acc, event) => {
     const date = event.event_date;
     if (!acc[date]) {
       acc[date] = { date, Received: 0, CheckedIn: 0 };
@@ -46,9 +42,20 @@ export function InboundTab() {
     return acc;
   }, {} as Record<string, { date: string; Received: number; CheckedIn: number }>);
 
-  const chartData = Object.values(dailyData || {})
+  const chartData = Object.values(dailyData)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-14);
+
+  const options = filterOptions || {
+    programs: [],
+    masterPrograms: [],
+    categories: [],
+    facilities: [],
+    locations: [],
+    ownerships: [],
+    marketplaces: [],
+    fileTypes: [],
+  };
 
   return (
     <div className="space-y-6">
@@ -56,6 +63,19 @@ export function InboundTab() {
         <h2 className="text-2xl font-bold">Inbound Operations</h2>
         <p className="text-muted-foreground">Units received and checked in from Inbound files</p>
       </div>
+
+      {/* Global Filters */}
+      <GlobalFilterBar
+        programs={options.programs}
+        masterPrograms={options.masterPrograms}
+        categories={options.categories}
+        facilities={options.facilities}
+        locations={options.locations}
+        ownerships={options.ownerships}
+        marketplaces={options.marketplaces}
+        fileTypes={options.fileTypes}
+        onRefresh={refetch}
+      />
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-4">

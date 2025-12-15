@@ -1,25 +1,19 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { KPICard } from '@/components/dashboard/KPICard';
-import { FilterBar } from '@/components/dashboard/FilterBar';
+import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle } from 'lucide-react';
 import { 
-  BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
   Legend,
-  LineChart,
   Line,
-  ComposedChart
+  ComposedChart,
+  Bar
 } from 'recharts';
 import { format } from 'date-fns';
-import { getWMWeekNumber } from '@/lib/wmWeek';
-import { DashboardFilters } from '@/hooks/useDashboardData';
+import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
 
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -28,48 +22,13 @@ const formatCurrency = (value: number) => {
 };
 
 export function SalesTab() {
-  const [filters, setFilters] = useState<DashboardFilters>({});
-  const currentWmWeek = getWMWeekNumber(new Date());
+  const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
+  const { data: salesData, refetch: refetchData } = useFilteredSales();
 
-  // Fetch sales data
-  const { data: salesData, refetch } = useQuery({
-    queryKey: ['sales-tab-metrics', filters],
-    queryFn: async () => {
-      let query = supabase
-        .from('sales_metrics')
-        .select('*');
-
-      if (filters.wmWeek) {
-        query = query.eq('wm_week', filters.wmWeek);
-      }
-      if (filters.programName) {
-        query = query.eq('program_name', filters.programName);
-      }
-      if (filters.facility) {
-        query = query.eq('facility', filters.facility);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Fetch filter options
-  const { data: filterOptions } = useQuery({
-    queryKey: ['sales-filter-options'],
-    queryFn: async () => {
-      const [programs, facilities] = await Promise.all([
-        supabase.from('sales_metrics').select('program_name').not('program_name', 'is', null),
-        supabase.from('sales_metrics').select('facility').not('facility', 'is', null),
-      ]);
-
-      return {
-        programs: [...new Set(programs.data?.map(r => r.program_name) || [])],
-        facilities: [...new Set(facilities.data?.map(r => r.facility) || [])],
-      };
-    },
-  });
+  const refetch = () => {
+    refetchOptions();
+    refetchData();
+  };
 
   // Calculate metrics
   const grossSales = salesData?.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0) || 0;
@@ -98,6 +57,17 @@ export function SalesTab() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-14);
 
+  const options = filterOptions || {
+    programs: [],
+    masterPrograms: [],
+    categories: [],
+    facilities: [],
+    locations: [],
+    ownerships: [],
+    marketplaces: [],
+    fileTypes: [],
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -105,16 +75,16 @@ export function SalesTab() {
         <p className="text-muted-foreground">Gross sales metrics from Sales files only</p>
       </div>
 
-      {/* Filters */}
-      <FilterBar
-        wmWeek={filters.wmWeek}
-        onWmWeekChange={(w) => setFilters(f => ({ ...f, wmWeek: w }))}
-        programName={filters.programName}
-        onProgramNameChange={(p) => setFilters(f => ({ ...f, programName: p }))}
-        facility={filters.facility}
-        onFacilityChange={(f) => setFilters(prev => ({ ...prev, facility: f }))}
-        programs={filterOptions?.programs || []}
-        facilities={filterOptions?.facilities || []}
+      {/* Global Filters */}
+      <GlobalFilterBar
+        programs={options.programs}
+        masterPrograms={options.masterPrograms}
+        categories={options.categories}
+        facilities={options.facilities}
+        locations={options.locations}
+        ownerships={options.ownerships}
+        marketplaces={options.marketplaces}
+        fileTypes={options.fileTypes}
         onRefresh={refetch}
       />
 
