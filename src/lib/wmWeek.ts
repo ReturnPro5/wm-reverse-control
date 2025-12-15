@@ -22,13 +22,43 @@ export function getWMDayOfWeek(date: Date): number {
   return dayOfWeek === 6 ? 1 : dayOfWeek + 2;
 }
 
-export function getWMWeekNumber(date: Date): number {
-  // Calculate week number based on year start
-  const yearStart = new Date(date.getFullYear(), 0, 1);
-  const firstSaturday = getWMWeekStart(addDays(yearStart, 6));
+export function getWMFiscalYearStart(date: Date): Date {
+  // WM fiscal year starts on the Saturday closest to Feb 1
+  // If date is in January, we're still in the previous fiscal year
   const weekStart = getWMWeekStart(date);
-  const weeksDiff = Math.floor(differenceInDays(weekStart, firstSaturday) / 7) + 1;
-  return Math.max(1, weeksDiff);
+  const fiscalStartYear = weekStart.getMonth() === 0 ? weekStart.getFullYear() - 1 : weekStart.getFullYear();
+  
+  const feb1 = new Date(fiscalStartYear, 1, 1); // Feb 1
+  const feb1DayOfWeek = feb1.getDay(); // 0 = Sunday, 6 = Saturday
+  
+  if (feb1DayOfWeek === 6) {
+    // Feb 1 is Saturday
+    return feb1;
+  }
+  
+  // Find the Saturday closest to Feb 1
+  const daysToPrevSat = feb1DayOfWeek === 0 ? 1 : feb1DayOfWeek + 1;
+  const daysToNextSat = 6 - feb1DayOfWeek;
+  
+  if (daysToPrevSat <= daysToNextSat) {
+    return new Date(fiscalStartYear, 1, 1 - daysToPrevSat);
+  } else {
+    return new Date(fiscalStartYear, 1, 1 + daysToNextSat);
+  }
+}
+
+export function getWMWeekNumber(date: Date): number {
+  // Get the Saturday of the week containing the date
+  const weekStart = getWMWeekStart(date);
+  
+  // Get fiscal year start (Saturday closest to Feb 1)
+  const fiscalYearStart = getWMFiscalYearStart(date);
+  
+  // Calculate weeks from fiscal year start
+  const daysDiff = differenceInDays(weekStart, fiscalYearStart);
+  const weekNum = Math.floor(daysDiff / 7) + 1;
+  
+  return weekNum;
 }
 
 export function formatWMWeek(date: Date): string {
