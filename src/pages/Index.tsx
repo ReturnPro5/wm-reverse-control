@@ -1,13 +1,41 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from 'react';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { OverviewTab } from '@/components/tabs/OverviewTab';
+import { InboundTab } from '@/components/tabs/InboundTab';
+import { ProcessingTab } from '@/components/tabs/ProcessingTab';
+import { SalesTab } from '@/components/tabs/SalesTab';
+import { OutboundTab } from '@/components/tabs/OutboundTab';
+import { MarketplaceTab } from '@/components/tabs/MarketplaceTab';
+import { DSVTab } from '@/components/tabs/DSVTab';
 
 const Index = () => {
+  const [activeTab, setActiveTab] = useState('overview');
+
+  const renderTab = () => {
+    switch (activeTab) {
+      case 'overview':
+        return <OverviewTab />;
+      case 'inbound':
+        return <InboundTab />;
+      case 'processing':
+        return <ProcessingTab />;
+      case 'sales':
+        return <SalesTab />;
+      case 'outbound':
+        return <OutboundTab />;
+      case 'marketplace':
+        return <MarketplaceTab />;
+      case 'dsv':
+        return <DSVTab />;
+      default:
+        return <OverviewTab />;
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
-    </div>
+    <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      {renderTab()}
+    </DashboardLayout>
   );
 };
 
