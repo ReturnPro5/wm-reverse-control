@@ -1,8 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { KPICard } from '@/components/dashboard/KPICard';
-import { FilterBar } from '@/components/dashboard/FilterBar';
+import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
 import { Store, DollarSign, Percent, Package } from 'lucide-react';
 import { 
   BarChart, 
@@ -14,11 +11,11 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell,
-  Legend
+  Cell
 } from 'recharts';
 import { format } from 'date-fns';
-import { DashboardFilters } from '@/hooks/useDashboardData';
+import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
+import { useFilters } from '@/contexts/FilterContext';
 
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -35,55 +32,28 @@ const COLORS = [
 ];
 
 export function MarketplaceTab() {
-  const [filters, setFilters] = useState<DashboardFilters>({});
+  const { filters } = useFilters();
+  const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
+  const { data: allSalesData, refetch: refetchData } = useFilteredSales();
 
-  // Fetch Walmart Marketplace sales (filter by marketplace profile)
-  const { data: marketplaceData, refetch } = useQuery({
-    queryKey: ['walmart-marketplace-metrics', filters],
-    queryFn: async () => {
-      let query = supabase
-        .from('sales_metrics')
-        .select('*')
-        .ilike('marketplace_profile_sold_on', '%Walmart%');
+  const refetch = () => {
+    refetchOptions();
+    refetchData();
+  };
 
-      if (filters.wmWeek) {
-        query = query.eq('wm_week', filters.wmWeek);
-      }
-      if (filters.programName) {
-        query = query.eq('program_name', filters.programName);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Fetch filter options
-  const { data: filterOptions } = useQuery({
-    queryKey: ['marketplace-filter-options'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('sales_metrics')
-        .select('program_name')
-        .ilike('marketplace_profile_sold_on', '%Walmart%')
-        .not('program_name', 'is', null);
-
-      return {
-        programs: [...new Set(data?.map(r => r.program_name) || [])],
-        facilities: [],
-      };
-    },
-  });
+  // Filter to Walmart Marketplace sales only
+  const marketplaceData = allSalesData?.filter(
+    sale => sale.marketplace_profile_sold_on?.toLowerCase().includes('walmart')
+  ) || [];
 
   // Calculate metrics
-  const grossSales = marketplaceData?.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0) || 0;
-  const effectiveRetail = marketplaceData?.reduce((sum, r) => sum + (Number(r.effective_retail) || 0), 0) || 0;
-  const unitsCount = marketplaceData?.length || 0;
+  const grossSales = marketplaceData.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0);
+  const effectiveRetail = marketplaceData.reduce((sum, r) => sum + (Number(r.effective_retail) || 0), 0);
+  const unitsCount = marketplaceData.length;
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
 
   // Group by category
-  const categoryData = marketplaceData?.reduce((acc, sale) => {
+  const categoryData = marketplaceData.reduce((acc, sale) => {
     const category = sale.category_name?.split(' -> ')[0] || 'Other';
     if (!acc[category]) {
       acc[category] = { name: category, value: 0, count: 0 };
@@ -93,12 +63,12 @@ export function MarketplaceTab() {
     return acc;
   }, {} as Record<string, { name: string; value: number; count: number }>);
 
-  const categoryChartData = Object.values(categoryData || {})
+  const categoryChartData = Object.values(categoryData)
     .sort((a, b) => b.value - a.value)
     .slice(0, 6);
 
   // Daily data
-  const dailyData = marketplaceData?.reduce((acc, sale) => {
+  const dailyData = marketplaceData.reduce((acc, sale) => {
     const date = sale.order_closed_date;
     if (!acc[date]) {
       acc[date] = { date, grossSales: 0, units: 0 };
@@ -108,9 +78,20 @@ export function MarketplaceTab() {
     return acc;
   }, {} as Record<string, { date: string; grossSales: number; units: number }>);
 
-  const dailyChartData = Object.values(dailyData || {})
+  const dailyChartData = Object.values(dailyData)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-14);
+
+  const options = filterOptions || {
+    programs: [],
+    masterPrograms: [],
+    categories: [],
+    facilities: [],
+    locations: [],
+    ownerships: [],
+    marketplaces: [],
+    fileTypes: [],
+  };
 
   return (
     <div className="space-y-6">
@@ -119,16 +100,16 @@ export function MarketplaceTab() {
         <p className="text-muted-foreground">Sales through Walmart Marketplace channel</p>
       </div>
 
-      {/* Filters */}
-      <FilterBar
-        wmWeek={filters.wmWeek}
-        onWmWeekChange={(w) => setFilters(f => ({ ...f, wmWeek: w }))}
-        programName={filters.programName}
-        onProgramNameChange={(p) => setFilters(f => ({ ...f, programName: p }))}
-        facility={undefined}
-        onFacilityChange={() => {}}
-        programs={filterOptions?.programs || []}
-        facilities={[]}
+      {/* Global Filters */}
+      <GlobalFilterBar
+        programs={options.programs}
+        masterPrograms={options.masterPrograms}
+        categories={options.categories}
+        facilities={options.facilities}
+        locations={options.locations}
+        ownerships={options.ownerships}
+        marketplaces={options.marketplaces}
+        fileTypes={options.fileTypes}
         onRefresh={refetch}
       />
 

@@ -1,9 +1,6 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { KPICard } from '@/components/dashboard/KPICard';
-import { FilterBar } from '@/components/dashboard/FilterBar';
-import { ShoppingCart, DollarSign, Percent, Package, TrendingUp } from 'lucide-react';
+import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { ShoppingCart, DollarSign, Percent, Package } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -17,7 +14,8 @@ import {
   Legend
 } from 'recharts';
 import { format } from 'date-fns';
-import { DashboardFilters } from '@/hooks/useDashboardData';
+import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
+import { useFilters } from '@/contexts/FilterContext';
 
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -26,55 +24,29 @@ const formatCurrency = (value: number) => {
 };
 
 export function DSVTab() {
-  const [filters, setFilters] = useState<DashboardFilters>({});
+  const { filters } = useFilters();
+  const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
+  const { data: allSalesData, refetch: refetchData } = useFilteredSales();
 
-  // Fetch DSV sales (filter by master program name containing DSV indicators)
-  const { data: dsvData, refetch } = useQuery({
-    queryKey: ['walmart-dsv-metrics', filters],
-    queryFn: async () => {
-      let query = supabase
-        .from('sales_metrics')
-        .select('*')
-        .or('master_program_name.ilike.%DSV%,program_name.ilike.%DSV%');
+  const refetch = () => {
+    refetchOptions();
+    refetchData();
+  };
 
-      if (filters.wmWeek) {
-        query = query.eq('wm_week', filters.wmWeek);
-      }
-      if (filters.programName) {
-        query = query.eq('program_name', filters.programName);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Fetch filter options
-  const { data: filterOptions } = useQuery({
-    queryKey: ['dsv-filter-options'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('sales_metrics')
-        .select('program_name')
-        .or('master_program_name.ilike.%DSV%,program_name.ilike.%DSV%')
-        .not('program_name', 'is', null);
-
-      return {
-        programs: [...new Set(data?.map(r => r.program_name) || [])],
-        facilities: [],
-      };
-    },
-  });
+  // Filter to DSV sales only
+  const dsvData = allSalesData?.filter(
+    sale => sale.master_program_name?.toLowerCase().includes('dsv') || 
+            sale.program_name?.toLowerCase().includes('dsv')
+  ) || [];
 
   // Calculate metrics
-  const grossSales = dsvData?.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0) || 0;
-  const effectiveRetail = dsvData?.reduce((sum, r) => sum + (Number(r.effective_retail) || 0), 0) || 0;
-  const unitsCount = dsvData?.length || 0;
+  const grossSales = dsvData.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0);
+  const effectiveRetail = dsvData.reduce((sum, r) => sum + (Number(r.effective_retail) || 0), 0);
+  const unitsCount = dsvData.length;
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
 
   // Weekly trend data
-  const weeklyData = dsvData?.reduce((acc, sale) => {
+  const weeklyData = dsvData.reduce((acc, sale) => {
     const week = sale.wm_week;
     if (!week) return acc;
     if (!acc[week]) {
@@ -86,7 +58,7 @@ export function DSVTab() {
     return acc;
   }, {} as Record<number, { week: number; grossSales: number; units: number; effectiveRetail: number }>);
 
-  const weeklyChartData = Object.values(weeklyData || {})
+  const weeklyChartData = Object.values(weeklyData)
     .map(w => ({
       ...w,
       recoveryRate: w.effectiveRetail > 0 ? (w.grossSales / w.effectiveRetail) * 100 : 0,
@@ -95,7 +67,7 @@ export function DSVTab() {
     .slice(-8);
 
   // Daily data
-  const dailyData = dsvData?.reduce((acc, sale) => {
+  const dailyData = dsvData.reduce((acc, sale) => {
     const date = sale.order_closed_date;
     if (!acc[date]) {
       acc[date] = { date, grossSales: 0, units: 0 };
@@ -105,9 +77,20 @@ export function DSVTab() {
     return acc;
   }, {} as Record<string, { date: string; grossSales: number; units: number }>);
 
-  const dailyChartData = Object.values(dailyData || {})
+  const dailyChartData = Object.values(dailyData)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-14);
+
+  const options = filterOptions || {
+    programs: [],
+    masterPrograms: [],
+    categories: [],
+    facilities: [],
+    locations: [],
+    ownerships: [],
+    marketplaces: [],
+    fileTypes: [],
+  };
 
   return (
     <div className="space-y-6">
@@ -116,16 +99,16 @@ export function DSVTab() {
         <p className="text-muted-foreground">Drop Ship Vendor program sales metrics</p>
       </div>
 
-      {/* Filters */}
-      <FilterBar
-        wmWeek={filters.wmWeek}
-        onWmWeekChange={(w) => setFilters(f => ({ ...f, wmWeek: w }))}
-        programName={filters.programName}
-        onProgramNameChange={(p) => setFilters(f => ({ ...f, programName: p }))}
-        facility={undefined}
-        onFacilityChange={() => {}}
-        programs={filterOptions?.programs || []}
-        facilities={[]}
+      {/* Global Filters */}
+      <GlobalFilterBar
+        programs={options.programs}
+        masterPrograms={options.masterPrograms}
+        categories={options.categories}
+        facilities={options.facilities}
+        locations={options.locations}
+        ownerships={options.ownerships}
+        marketplaces={options.marketplaces}
+        fileTypes={options.fileTypes}
         onRefresh={refetch}
       />
 

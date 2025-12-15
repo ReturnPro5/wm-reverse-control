@@ -9,11 +9,9 @@ import {
   Cell
 } from 'recharts';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useFilteredSales } from '@/hooks/useFilteredData';
 
 interface SalesBreakdownProps {
-  wmWeek?: number;
   className?: string;
 }
 
@@ -31,42 +29,29 @@ const COLORS = [
   'hsl(var(--accent))',
 ];
 
-export function SalesBreakdown({ wmWeek, className }: SalesBreakdownProps) {
-  const { data: marketplaceData } = useQuery({
-    queryKey: ['sales-by-marketplace', wmWeek],
-    queryFn: async () => {
-      let query = supabase
-        .from('sales_metrics')
-        .select('marketplace_profile_sold_on, gross_sale');
+export function SalesBreakdown({ className }: SalesBreakdownProps) {
+  const { data: salesData } = useFilteredSales();
 
-      if (wmWeek) {
-        query = query.eq('wm_week', wmWeek);
-      }
+  // Group sales by marketplace using global filters
+  const marketplaceData = salesData?.reduce((grouped, row) => {
+    const marketplace = row.marketplace_profile_sold_on || 'Other';
+    grouped[marketplace] = (grouped[marketplace] || 0) + (Number(row.gross_sale) || 0);
+    return grouped;
+  }, {} as Record<string, number>);
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const grouped: Record<string, number> = {};
-      data?.forEach(row => {
-        const marketplace = row.marketplace_profile_sold_on || 'Other';
-        grouped[marketplace] = (grouped[marketplace] || 0) + (Number(row.gross_sale) || 0);
-      });
-
-      return Object.entries(grouped)
-        .map(([name, value]) => ({ name: name.length > 15 ? name.slice(0, 15) + '...' : name, value }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 6);
-    },
-  });
+  const chartData = Object.entries(marketplaceData || {})
+    .map(([name, value]) => ({ name: name.length > 15 ? name.slice(0, 15) + '...' : name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
 
   return (
     <div className={cn('bg-card rounded-lg border p-6', className)}>
       <h3 className="text-lg font-semibold mb-6">Sales by Marketplace</h3>
       
-      {marketplaceData && marketplaceData.length > 0 ? (
+      {chartData.length > 0 ? (
         <div className="h-[250px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={marketplaceData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={true} vertical={false} />
               <XAxis 
                 type="number" 
@@ -88,7 +73,7 @@ export function SalesBreakdown({ wmWeek, className }: SalesBreakdownProps) {
                 formatter={(value: number) => [formatCurrency(value), 'Gross Sales']}
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                {marketplaceData.map((_, index) => (
+                {chartData.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Bar>
