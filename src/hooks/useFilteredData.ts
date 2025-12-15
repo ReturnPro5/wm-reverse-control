@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useFilters, GlobalFilters } from '@/contexts/FilterContext';
+import { Tables } from '@/integrations/supabase/types';
 
 // Build a Supabase query with all global filters applied
 function applyFilters<T extends { eq: any; not: any }>(
@@ -145,13 +146,27 @@ export function useFilteredSales() {
   return useQuery({
     queryKey: ['filtered-sales', filters],
     queryFn: async () => {
-      let query = supabase.from('sales_metrics').select('*');
-      query = applyFilters(query, filters);
+      // Fetch all records using pagination to bypass 1000 row limit
+      const allData: Tables<'sales_metrics'>[] = [];
+      let from = 0;
+      const pageSize = 1000;
       
-      const { data, error } = await query;
-      if (error) throw error;
+      while (true) {
+        let query = supabase.from('sales_metrics').select('*');
+        query = applyFilters(query, filters);
+        query = query.range(from, from + pageSize - 1);
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
       
-      return filterExcludedFiles(data, filters.excludedFileIds);
+      return filterExcludedFiles(allData, filters.excludedFileIds);
     },
   });
 }
@@ -233,22 +248,38 @@ export function useFilteredWeeklyTrends() {
   return useQuery({
     queryKey: ['filtered-weekly-trends', filters],
     queryFn: async () => {
-      let query = supabase
-        .from('sales_metrics')
-        .select('wm_week, gross_sale, effective_retail, file_upload_id')
-        .not('wm_week', 'is', null);
+      // Fetch all records using pagination
+      type TrendRow = { wm_week: number | null; gross_sale: number; effective_retail: number | null; file_upload_id: string | null };
+      const allData: TrendRow[] = [];
+      let from = 0;
+      const pageSize = 1000;
       
-      if (filters.programName) {
-        query = query.eq('program_name', filters.programName);
+      while (true) {
+        let query = supabase
+          .from('sales_metrics')
+          .select('wm_week, gross_sale, effective_retail, file_upload_id')
+          .not('wm_week', 'is', null);
+        
+        if (filters.programName) {
+          query = query.eq('program_name', filters.programName);
+        }
+        if (filters.facility) {
+          query = query.eq('facility', filters.facility);
+        }
+        
+        query = query.range(from, from + pageSize - 1).order('wm_week', { ascending: true });
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        
+        if (data.length < pageSize) break;
+        from += pageSize;
       }
-      if (filters.facility) {
-        query = query.eq('facility', filters.facility);
-      }
-      
-      const { data, error } = await query.order('wm_week', { ascending: true });
-      if (error) throw error;
 
-      const filtered = filterExcludedFiles(data, filters.excludedFileIds);
+      const filtered = filterExcludedFiles(allData, filters.excludedFileIds);
       
       const weeklyData: Record<number, { grossSales: number; effectiveRetail: number; count: number }> = {};
       
