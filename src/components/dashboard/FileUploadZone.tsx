@@ -1,0 +1,123 @@
+import { useCallback, useState } from 'react';
+import { Upload, File, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useFileUpload, UploadProgress } from '@/hooks/useFileUpload';
+import { Progress } from '@/components/ui/progress';
+
+interface FileUploadZoneProps {
+  onUploadComplete?: () => void;
+  className?: string;
+}
+
+export function FileUploadZone({ onUploadComplete, className }: FileUploadZoneProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const { uploadFile, isUploading, uploadProgress } = useFileUpload();
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const csvOrExcel = files.filter(f => 
+      f.name.endsWith('.csv') || f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+    );
+    
+    for (const file of csvOrExcel) {
+      await uploadFile(file);
+    }
+    
+    onUploadComplete?.();
+  }, [uploadFile, onUploadComplete]);
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    
+    for (const file of files) {
+      await uploadFile(file);
+    }
+    
+    e.target.value = '';
+    onUploadComplete?.();
+  }, [uploadFile, onUploadComplete]);
+
+  const getStatusIcon = () => {
+    if (!uploadProgress) return <Upload className="h-8 w-8 text-muted-foreground" />;
+    
+    switch (uploadProgress.stage) {
+      case 'complete':
+        return <CheckCircle className="h-8 w-8 text-success" />;
+      case 'error':
+        return <AlertCircle className="h-8 w-8 text-destructive" />;
+      default:
+        return <Loader2 className="h-8 w-8 text-primary animate-spin" />;
+    }
+  };
+
+  return (
+    <div className={cn('bg-card rounded-lg border p-6', className)}>
+      <h3 className="text-lg font-semibold mb-4">Upload Files</h3>
+      
+      <div
+        className={cn(
+          'border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer',
+          isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
+          isUploading && 'pointer-events-none opacity-75'
+        )}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => !isUploading && document.getElementById('file-input')?.click()}
+      >
+        <input
+          id="file-input"
+          type="file"
+          className="hidden"
+          accept=".csv,.xlsx,.xls"
+          multiple
+          onChange={handleFileSelect}
+          disabled={isUploading}
+        />
+        
+        <div className="flex flex-col items-center gap-3">
+          {getStatusIcon()}
+          
+          {uploadProgress ? (
+            <div className="w-full max-w-xs space-y-2">
+              <p className="text-sm font-medium">{uploadProgress.message}</p>
+              <Progress value={uploadProgress.progress} className="h-2" />
+            </div>
+          ) : (
+            <>
+              <div>
+                <p className="text-sm font-medium">Drop files here or click to upload</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Supports CSV and Excel files
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      
+      <div className="mt-4 text-xs text-muted-foreground">
+        <p className="font-medium mb-1">Naming Convention:</p>
+        <ul className="list-disc list-inside space-y-0.5">
+          <li>Sales MM.DD.YY.xlsx</li>
+          <li>Inbound MM.DD.YY.xlsx</li>
+          <li>Outbound MM.DD.YY.xlsx</li>
+          <li>Inventory MM.DD.YY.xlsx</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
