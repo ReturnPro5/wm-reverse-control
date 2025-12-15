@@ -143,7 +143,7 @@ export function SalesTab() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis 
                   dataKey="date" 
-                  tickFormatter={(d) => format(new Date(d), 'MMM d')}
+                  tickFormatter={(d) => format(new Date(d + 'T12:00:00'), 'MMM d')}
                   tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                 />
                 <YAxis 
@@ -163,7 +163,7 @@ export function SalesTab() {
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px',
                   }}
-                  labelFormatter={(d) => format(new Date(d), 'MMMM d, yyyy')}
+                  labelFormatter={(d) => format(new Date(d + 'T12:00:00'), 'MMMM d, yyyy')}
                   formatter={(value: number, name: string) => {
                     if (name === 'grossSales') return [formatCurrency(value), 'Gross Sales'];
                     if (name === 'recoveryRate') return [`${value.toFixed(1)}%`, 'Recovery Rate'];
