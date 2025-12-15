@@ -49,11 +49,11 @@ function parseDate(value: string): Date | null {
     return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), hour, parseInt(minutes), parseInt(seconds));
   }
   
-  // Try MM/DD/YYYY format
+  // Try MM/DD/YYYY format - use noon to avoid timezone edge cases
   const dateMatch = value.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (dateMatch) {
     const [, month, day, year] = dateMatch;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
   }
   
   return null;

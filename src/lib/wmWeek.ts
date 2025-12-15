@@ -97,7 +97,7 @@ export function parseFileBusinessDate(fileName: string): Date | null {
         year = year + 2000;
       }
       
-      const date = new Date(year, month - 1, day);
+      const date = new Date(year, month - 1, day, 12, 0, 0); // Use noon to avoid timezone edge cases
       if (isValid(date)) {
         return date;
       }
