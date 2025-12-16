@@ -3,51 +3,38 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFilters, GlobalFilters } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
 
-// Build a Supabase query with all global filters applied
-function applyFilters<T extends { eq: any; not: any }>(
+// Build a Supabase query with all global filters applied (multi-select arrays)
+function applyFilters<T extends { eq: any; not: any; in: any }>(
   query: T,
   filters: GlobalFilters,
-  tablePrefix: string = ''
 ): T {
-  const prefix = tablePrefix ? `${tablePrefix}.` : '';
-  
-  // Exclude files
-  if (filters.excludedFileIds.length > 0) {
-    // Can't easily do NOT IN with supabase-js, so we'll filter client-side for excluded files
+  // Data filters - use .in() for arrays
+  if (filters.wmWeeks.length > 0) {
+    query = query.in('wm_week', filters.wmWeeks);
   }
-  
-  // File type filter
-  if (filters.fileType) {
-    // This would apply to file_uploads table
+  if (filters.wmDaysOfWeek.length > 0) {
+    query = query.in('wm_day_of_week', filters.wmDaysOfWeek);
   }
-  
-  // Data filters
-  if (filters.wmWeek !== undefined) {
-    query = query.eq('wm_week', filters.wmWeek);
+  if (filters.programNames.length > 0) {
+    query = query.in('program_name', filters.programNames);
   }
-  if (filters.wmDayOfWeek !== undefined) {
-    query = query.eq('wm_day_of_week', filters.wmDayOfWeek);
+  if (filters.facilities.length > 0) {
+    query = query.in('facility', filters.facilities);
   }
-  if (filters.programName) {
-    query = query.eq('program_name', filters.programName);
+  if (filters.categoryNames.length > 0) {
+    query = query.in('category_name', filters.categoryNames);
   }
-  if (filters.facility) {
-    query = query.eq('facility', filters.facility);
+  if (filters.tagClientOwnerships.length > 0) {
+    query = query.in('tag_client_ownership', filters.tagClientOwnerships);
   }
-  if (filters.categoryName) {
-    query = query.eq('category_name', filters.categoryName);
+  if (filters.tagClientSources.length > 0) {
+    query = query.in('tag_clientsource', filters.tagClientSources);
   }
-  if (filters.tagClientOwnership) {
-    query = query.eq('tag_client_ownership', filters.tagClientOwnership);
+  if (filters.marketplacesSoldOn.length > 0) {
+    query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
   }
-  if (filters.tagClientSource) {
-    query = query.eq('tag_clientsource', filters.tagClientSource);
-  }
-  if (filters.marketplaceProfileSoldOn) {
-    query = query.eq('marketplace_profile_sold_on', filters.marketplaceProfileSoldOn);
-  }
-  if (filters.locationId) {
-    query = query.eq('location_id', filters.locationId);
+  if (filters.locationIds.length > 0) {
+    query = query.in('location_id', filters.locationIds);
   }
   
   return query;
@@ -114,7 +101,7 @@ export function useFilteredLifecycle() {
     queryKey: ['filtered-lifecycle-inbound-only', filters],
     staleTime: 0,
     queryFn: async () => {
-      // First get Inbound file IDs
+      // ALWAYS get only Inbound file IDs - lifecycle funnel is ONLY for Inbound files
       const { data: inboundFiles, error: filesError } = await supabase
         .from('file_uploads')
         .select('id')
@@ -228,14 +215,14 @@ export function useFilteredFees() {
     queryFn: async () => {
       let query = supabase.from('fee_metrics').select('*');
       
-      if (filters.wmWeek !== undefined) {
-        query = query.eq('wm_week', filters.wmWeek);
+      if (filters.wmWeeks.length > 0) {
+        query = query.in('wm_week', filters.wmWeeks);
       }
-      if (filters.programName) {
-        query = query.eq('program_name', filters.programName);
+      if (filters.programNames.length > 0) {
+        query = query.in('program_name', filters.programNames);
       }
-      if (filters.facility) {
-        query = query.eq('facility', filters.facility);
+      if (filters.facilities.length > 0) {
+        query = query.in('facility', filters.facilities);
       }
       
       const { data, error } = await query;
@@ -254,11 +241,11 @@ export function useFilteredLifecycleEvents() {
     queryFn: async () => {
       let query = supabase.from('lifecycle_events').select('*');
       
-      if (filters.wmWeek !== undefined) {
-        query = query.eq('wm_week', filters.wmWeek);
+      if (filters.wmWeeks.length > 0) {
+        query = query.in('wm_week', filters.wmWeeks);
       }
-      if (filters.wmDayOfWeek !== undefined) {
-        query = query.eq('wm_day_of_week', filters.wmDayOfWeek);
+      if (filters.wmDaysOfWeek.length > 0) {
+        query = query.in('wm_day_of_week', filters.wmDaysOfWeek);
       }
       
       const { data, error } = await query.order('event_date', { ascending: false });
@@ -273,15 +260,15 @@ export function useFileUploads() {
   const { filters } = useFilters();
 
   return useQuery({
-    queryKey: ['file-uploads-all', filters.fileType],
+    queryKey: ['file-uploads-all', filters.fileTypes],
     queryFn: async () => {
       let query = supabase
         .from('file_uploads')
         .select('*')
         .order('upload_timestamp', { ascending: false });
 
-      if (filters.fileType) {
-        query = query.eq('file_type', filters.fileType as 'Sales' | 'Inbound' | 'Outbound' | 'Inventory' | 'Unknown');
+      if (filters.fileTypes.length > 0) {
+        query = query.in('file_type', filters.fileTypes as ('Sales' | 'Inbound' | 'Outbound' | 'Inventory' | 'Unknown')[]);
       }
 
       const { data, error } = await query;
@@ -309,11 +296,11 @@ export function useFilteredWeeklyTrends() {
           .select('wm_week, gross_sale, effective_retail, file_upload_id')
           .not('wm_week', 'is', null);
         
-        if (filters.programName) {
-          query = query.eq('program_name', filters.programName);
+        if (filters.programNames.length > 0) {
+          query = query.in('program_name', filters.programNames);
         }
-        if (filters.facility) {
-          query = query.eq('facility', filters.facility);
+        if (filters.facilities.length > 0) {
+          query = query.in('facility', filters.facilities);
         }
         
         query = query.range(from, from + pageSize - 1).order('wm_week', { ascending: true });
