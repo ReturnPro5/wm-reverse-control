@@ -246,7 +246,7 @@ export function GlobalFilterBar({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Client Sources</SelectItem>
-                {clientSources.map(c => (
+                {(clientSources || []).map(c => (
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
               </SelectContent>
