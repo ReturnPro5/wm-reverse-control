@@ -40,6 +40,9 @@ function applyFilters<T extends { eq: any; not: any }>(
   if (filters.tagClientOwnership) {
     query = query.eq('tag_client_ownership', filters.tagClientOwnership);
   }
+  if (filters.tagClientSource) {
+    query = query.eq('tag_clientsource', filters.tagClientSource);
+  }
   if (filters.marketplaceProfileSoldOn) {
     query = query.eq('marketplace_profile_sold_on', filters.marketplaceProfileSoldOn);
   }
@@ -73,6 +76,7 @@ export function useFilterOptions() {
         facilities,
         locations,
         ownerships,
+        clientSources,
         marketplaces,
         fileTypes,
       ] = await Promise.all([
@@ -82,6 +86,7 @@ export function useFilterOptions() {
         supabase.from('units_canonical').select('facility').not('facility', 'is', null),
         supabase.from('units_canonical').select('location_id').not('location_id', 'is', null),
         supabase.from('units_canonical').select('tag_client_ownership').not('tag_client_ownership', 'is', null),
+        supabase.from('units_canonical').select('tag_clientsource').not('tag_clientsource', 'is', null),
         supabase.from('sales_metrics').select('marketplace_profile_sold_on').not('marketplace_profile_sold_on', 'is', null),
         supabase.from('file_uploads').select('file_type'),
       ]);
@@ -93,6 +98,7 @@ export function useFilterOptions() {
         facilities: [...new Set(facilities.data?.map(r => r.facility).filter(Boolean) || [])] as string[],
         locations: [...new Set(locations.data?.map(r => r.location_id).filter(Boolean) || [])] as string[],
         ownerships: [...new Set(ownerships.data?.map(r => r.tag_client_ownership).filter(Boolean) || [])] as string[],
+        clientSources: [...new Set(clientSources.data?.map(r => r.tag_clientsource).filter(Boolean) || [])] as string[],
         marketplaces: [...new Set(marketplaces.data?.map(r => r.marketplace_profile_sold_on).filter(Boolean) || [])] as string[],
         fileTypes: [...new Set(fileTypes.data?.map(r => r.file_type).filter(Boolean) || [])] as string[],
       };

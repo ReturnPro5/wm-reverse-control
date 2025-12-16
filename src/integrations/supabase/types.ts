@@ -164,6 +164,7 @@ export type Database = {
           program_name: string | null
           refund_amount: number | null
           sale_price: number
+          tag_clientsource: string | null
           trgid: string
           wm_day_of_week: number | null
           wm_week: number | null
@@ -184,6 +185,7 @@ export type Database = {
           program_name?: string | null
           refund_amount?: number | null
           sale_price?: number
+          tag_clientsource?: string | null
           trgid: string
           wm_day_of_week?: number | null
           wm_week?: number | null
@@ -204,6 +206,7 @@ export type Database = {
           program_name?: string | null
           refund_amount?: number | null
           sale_price?: number
+          tag_clientsource?: string | null
           trgid?: string
           wm_day_of_week?: number | null
           wm_week?: number | null
@@ -239,6 +242,7 @@ export type Database = {
           received_on: string | null
           sale_price: number | null
           tag_client_ownership: string | null
+          tag_clientsource: string | null
           tested_on: string | null
           trgid: string
           upc_retail: number | null
@@ -266,6 +270,7 @@ export type Database = {
           received_on?: string | null
           sale_price?: number | null
           tag_client_ownership?: string | null
+          tag_clientsource?: string | null
           tested_on?: string | null
           trgid: string
           upc_retail?: number | null
@@ -293,6 +298,7 @@ export type Database = {
           received_on?: string | null
           sale_price?: number | null
           tag_client_ownership?: string | null
+          tag_clientsource?: string | null
           tested_on?: string | null
           trgid?: string
           upc_retail?: number | null

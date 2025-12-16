@@ -89,6 +89,7 @@ export function MarketplaceTab() {
     facilities: [],
     locations: [],
     ownerships: [],
+    clientSources: [],
     marketplaces: [],
     fileTypes: [],
   };
@@ -108,6 +109,7 @@ export function MarketplaceTab() {
         facilities={options.facilities}
         locations={options.locations}
         ownerships={options.ownerships}
+        clientSources={options.clientSources}
         marketplaces={options.marketplaces}
         fileTypes={options.fileTypes}
         onRefresh={refetch}
