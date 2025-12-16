@@ -111,7 +111,8 @@ export function useFilteredLifecycle() {
   const { filters } = useFilters();
 
   return useQuery({
-    queryKey: ['filtered-lifecycle', filters],
+    queryKey: ['filtered-lifecycle-inbound-only', filters],
+    staleTime: 0,
     queryFn: async () => {
       // First get Inbound file IDs
       const { data: inboundFiles, error: filesError } = await supabase
