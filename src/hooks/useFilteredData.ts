@@ -113,27 +113,77 @@ export function useFilteredLifecycle() {
   return useQuery({
     queryKey: ['filtered-lifecycle', filters],
     queryFn: async () => {
-      let query = supabase.from('units_canonical').select('current_stage, file_upload_id');
-      query = applyFilters(query, filters);
+      // Fetch units_canonical for Received, CheckedIn, Tested, Listed (with pagination)
+      const unitsData: { trgid: string; received_on: string | null; checked_in_on: string | null; tested_on: string | null; first_listed_date: string | null; file_upload_id: string | null }[] = [];
+      let offset = 0;
+      const batchSize = 1000;
       
-      const { data, error } = await query;
-      if (error) throw error;
+      while (true) {
+        let query = supabase
+          .from('units_canonical')
+          .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, file_upload_id');
+        query = applyFilters(query, filters);
+        query = query.range(offset, offset + batchSize - 1);
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        
+        unitsData.push(...data);
+        if (data.length < batchSize) break;
+        offset += batchSize;
+      }
       
-      const filtered = filterExcludedFiles(data, filters.excludedFileIds);
+      const filteredUnits = filterExcludedFiles(unitsData, filters.excludedFileIds);
+      
+      // Deduplicate by trgid for each stage (a unit can only be received/checked-in/listed once)
+      const receivedTrgids = new Set<string>();
+      const checkedInTrgids = new Set<string>();
+      const testedTrgids = new Set<string>();
+      const listedTrgids = new Set<string>();
+      
+      filteredUnits.forEach(unit => {
+        if (unit.received_on) receivedTrgids.add(unit.trgid);
+        if (unit.checked_in_on) checkedInTrgids.add(unit.trgid);
+        if (unit.tested_on) testedTrgids.add(unit.trgid);
+        if (unit.first_listed_date) listedTrgids.add(unit.trgid);
+      });
+      
+      // Fetch sales_metrics for Sold count (with pagination)
+      const salesData: { trgid: string; file_upload_id: string | null }[] = [];
+      offset = 0;
+      
+      while (true) {
+        let query = supabase
+          .from('sales_metrics')
+          .select('trgid, file_upload_id')
+          .neq('marketplace_profile_sold_on', 'Transfer')
+          .gt('sale_price', 0);
+        query = applyFilters(query, filters);
+        query = query.range(offset, offset + batchSize - 1);
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        
+        salesData.push(...data);
+        if (data.length < batchSize) break;
+        offset += batchSize;
+      }
+      
+      const filteredSales = filterExcludedFiles(salesData, filters.excludedFileIds);
+      
+      // Deduplicate sold trgids
+      const soldTrgids = new Set<string>();
+      filteredSales.forEach(sale => soldTrgids.add(sale.trgid));
       
       const counts: Record<string, number> = {
-        Received: 0,
-        CheckedIn: 0,
-        Tested: 0,
-        Listed: 0,
-        Sold: 0,
+        Received: receivedTrgids.size,
+        CheckedIn: checkedInTrgids.size,
+        Tested: testedTrgids.size,
+        Listed: listedTrgids.size,
+        Sold: soldTrgids.size,
       };
-
-      filtered.forEach((row) => {
-        if (row.current_stage && counts[row.current_stage] !== undefined) {
-          counts[row.current_stage]++;
-        }
-      });
 
       const total = Object.values(counts).reduce((a, b) => a + b, 0);
       
