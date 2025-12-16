@@ -4,23 +4,23 @@ export interface GlobalFilters {
   // File-level filters
   selectedFileIds: string[] | null; // null = all files, [] = none, [...ids] = specific
   excludedFileIds: string[];
-  fileType: string | undefined;
+  fileTypes: string[]; // Changed to array for multi-select
   fileBusinessDateStart: string | undefined;
   fileBusinessDateEnd: string | undefined;
   fileUploadDateStart: string | undefined;
   fileUploadDateEnd: string | undefined;
   
-  // Data-level filters
-  wmWeek: number | undefined;
-  wmDayOfWeek: number | undefined;
-  programName: string | undefined;
-  masterProgramName: string | undefined;
-  categoryName: string | undefined;
-  facility: string | undefined;
-  locationId: string | undefined;
-  tagClientOwnership: string | undefined;
-  tagClientSource: string | undefined;
-  marketplaceProfileSoldOn: string | undefined;
+  // Data-level filters (all arrays for multi-select)
+  wmWeeks: number[];
+  wmDaysOfWeek: number[];
+  programNames: string[];
+  masterProgramNames: string[];
+  categoryNames: string[];
+  facilities: string[];
+  locationIds: string[];
+  tagClientOwnerships: string[];
+  tagClientSources: string[];
+  marketplacesSoldOn: string[];
 }
 
 interface FilterContextType {
@@ -36,21 +36,21 @@ interface FilterContextType {
 const defaultFilters: GlobalFilters = {
   selectedFileIds: null,
   excludedFileIds: [],
-  fileType: undefined,
+  fileTypes: [],
   fileBusinessDateStart: undefined,
   fileBusinessDateEnd: undefined,
   fileUploadDateStart: undefined,
   fileUploadDateEnd: undefined,
-  wmWeek: undefined,
-  wmDayOfWeek: undefined,
-  programName: undefined,
-  masterProgramName: undefined,
-  categoryName: undefined,
-  facility: undefined,
-  locationId: undefined,
-  tagClientOwnership: undefined,
-  tagClientSource: undefined,
-  marketplaceProfileSoldOn: undefined,
+  wmWeeks: [],
+  wmDaysOfWeek: [],
+  programNames: [],
+  masterProgramNames: [],
+  categoryNames: [],
+  facilities: [],
+  locationIds: [],
+  tagClientOwnerships: [],
+  tagClientSources: [],
+  marketplacesSoldOn: [],
 };
 
 const FilterContext = createContext<FilterContextType | undefined>(undefined);

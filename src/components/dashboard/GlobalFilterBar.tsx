@@ -1,11 +1,11 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, RotateCcw, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { RefreshCw, RotateCcw, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFilters } from '@/contexts/FilterContext';
 import { getWMWeekNumber, WM_DAY_NAMES } from '@/lib/wmWeek';
 import { useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { MultiSelect } from '@/components/ui/multi-select';
 
 interface GlobalFilterBarProps {
   programs: string[];
@@ -37,10 +37,14 @@ export function GlobalFilterBar({
   const { filters, setFilter, resetFilters } = useFilters();
   const [isExpanded, setIsExpanded] = useState(false);
   const currentWeek = getWMWeekNumber(new Date());
-  const weekOptions = Array.from({ length: 52 }, (_, i) => i + 1);
+  const weekOptions = Array.from({ length: 52 }, (_, i) => ({
+    value: (i + 1).toString(),
+    label: `WK${(i + 1).toString().padStart(2, '0')}${i + 1 === currentWeek ? ' (Current)' : ''}`,
+  }));
 
   const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
     if (key === 'excludedFileIds' || key === 'selectedFileIds') return false;
+    if (Array.isArray(value)) return value.length > 0;
     return value !== undefined && value !== null;
   });
 
@@ -54,73 +58,40 @@ export function GlobalFilterBar({
         </div>
 
         {/* WM Week */}
-        <Select 
-          value={filters.wmWeek?.toString() || 'all'} 
-          onValueChange={(v) => setFilter('wmWeek', v === 'all' ? undefined : parseInt(v))}
-        >
-          <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="WM Week" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Weeks</SelectItem>
-            {weekOptions.map(week => (
-              <SelectItem key={week} value={week.toString()}>
-                WK{week.toString().padStart(2, '0')}
-                {week === currentWeek && ' (Current)'}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={weekOptions}
+          selected={filters.wmWeeks.map(String)}
+          onChange={(values) => setFilter('wmWeeks', values.map(Number))}
+          placeholder="WM Week"
+          className="w-[140px]"
+        />
 
         {/* Program Name */}
-        <Select 
-          value={filters.programName || 'all'} 
-          onValueChange={(v) => setFilter('programName', v === 'all' ? undefined : v)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Program" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Programs</SelectItem>
-            {programs.map(p => (
-              <SelectItem key={p} value={p}>
-                {p.length > 25 ? p.slice(0, 25) + '...' : p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={programs.map(p => ({ value: p, label: p.length > 25 ? p.slice(0, 25) + '...' : p }))}
+          selected={filters.programNames}
+          onChange={(values) => setFilter('programNames', values)}
+          placeholder="Program"
+          className="w-[180px]"
+        />
 
         {/* Facility */}
-        <Select 
-          value={filters.facility || 'all'} 
-          onValueChange={(v) => setFilter('facility', v === 'all' ? undefined : v)}
-        >
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Facility" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Facilities</SelectItem>
-            {facilities.map(f => (
-              <SelectItem key={f} value={f}>{f}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={facilities.map(f => ({ value: f, label: f }))}
+          selected={filters.facilities}
+          onChange={(values) => setFilter('facilities', values)}
+          placeholder="Facility"
+          className="w-[140px]"
+        />
 
         {/* File Type */}
-        <Select 
-          value={filters.fileType || 'all'} 
-          onValueChange={(v) => setFilter('fileType', v === 'all' ? undefined : v)}
-        >
-          <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="File Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {fileTypes.map(t => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={fileTypes.map(t => ({ value: t, label: t }))}
+          selected={filters.fileTypes}
+          onChange={(values) => setFilter('fileTypes', values)}
+          placeholder="File Type"
+          className="w-[140px]"
+        />
 
         <div className="ml-auto flex items-center gap-2">
           <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -151,124 +122,79 @@ export function GlobalFilterBar({
         <CollapsibleContent>
           <div className="border-t px-4 py-3 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {/* WM Day of Week */}
-            <Select 
-              value={filters.wmDayOfWeek?.toString() || 'all'} 
-              onValueChange={(v) => setFilter('wmDayOfWeek', v === 'all' ? undefined : parseInt(v))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="WM Day" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Days</SelectItem>
-                {WM_DAY_NAMES.map((day, i) => (
-                  <SelectItem key={i} value={(i + 1).toString()}>
-                    {day} (Day {i + 1})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={WM_DAY_NAMES.map((day, i) => ({
+                value: (i + 1).toString(),
+                label: `${day} (Day ${i + 1})`,
+              }))}
+              selected={filters.wmDaysOfWeek.map(String)}
+              onChange={(values) => setFilter('wmDaysOfWeek', values.map(Number))}
+              placeholder="WM Day"
+              className="w-full"
+            />
 
             {/* Master Program */}
-            <Select 
-              value={filters.masterProgramName || 'all'} 
-              onValueChange={(v) => setFilter('masterProgramName', v === 'all' ? undefined : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Master Program" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Master Programs</SelectItem>
-                {masterPrograms.map(p => (
-                  <SelectItem key={p} value={p}>
-                    {p.length > 20 ? p.slice(0, 20) + '...' : p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={masterPrograms.map(p => ({
+                value: p,
+                label: p.length > 20 ? p.slice(0, 20) + '...' : p,
+              }))}
+              selected={filters.masterProgramNames}
+              onChange={(values) => setFilter('masterProgramNames', values)}
+              placeholder="Master Program"
+              className="w-full"
+            />
 
             {/* Category */}
-            <Select 
-              value={filters.categoryName || 'all'} 
-              onValueChange={(v) => setFilter('categoryName', v === 'all' ? undefined : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map(c => (
-                  <SelectItem key={c} value={c}>
-                    {c.length > 20 ? c.slice(0, 20) + '...' : c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={categories.map(c => ({
+                value: c,
+                label: c.length > 20 ? c.slice(0, 20) + '...' : c,
+              }))}
+              selected={filters.categoryNames}
+              onChange={(values) => setFilter('categoryNames', values)}
+              placeholder="Category"
+              className="w-full"
+            />
 
             {/* Location ID */}
-            <Select 
-              value={filters.locationId || 'all'} 
-              onValueChange={(v) => setFilter('locationId', v === 'all' ? undefined : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Location ID" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                {locations.map(l => (
-                  <SelectItem key={l} value={l}>{l}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={locations.map(l => ({ value: l, label: l }))}
+              selected={filters.locationIds}
+              onChange={(values) => setFilter('locationIds', values)}
+              placeholder="Location ID"
+              className="w-full"
+            />
 
             {/* Client Ownership */}
-            <Select 
-              value={filters.tagClientOwnership || 'all'} 
-              onValueChange={(v) => setFilter('tagClientOwnership', v === 'all' ? undefined : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Ownership" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Ownership</SelectItem>
-                {ownerships.map(o => (
-                  <SelectItem key={o} value={o}>{o}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={ownerships.map(o => ({ value: o, label: o }))}
+              selected={filters.tagClientOwnerships}
+              onChange={(values) => setFilter('tagClientOwnerships', values)}
+              placeholder="Ownership"
+              className="w-full"
+            />
 
             {/* Client Source */}
-            <Select 
-              value={filters.tagClientSource || 'all'} 
-              onValueChange={(v) => setFilter('tagClientSource', v === 'all' ? undefined : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Client Source" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Client Sources</SelectItem>
-                {(clientSources || []).map(c => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={clientSources.map(c => ({ value: c, label: c }))}
+              selected={filters.tagClientSources}
+              onChange={(values) => setFilter('tagClientSources', values)}
+              placeholder="Client Source"
+              className="w-full"
+            />
 
             {/* Marketplace */}
-            <Select 
-              value={filters.marketplaceProfileSoldOn || 'all'} 
-              onValueChange={(v) => setFilter('marketplaceProfileSoldOn', v === 'all' ? undefined : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Marketplace" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Marketplaces</SelectItem>
-                {marketplaces.map(m => (
-                  <SelectItem key={m} value={m}>
-                    {m.length > 18 ? m.slice(0, 18) + '...' : m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={marketplaces.map(m => ({
+                value: m,
+                label: m.length > 18 ? m.slice(0, 18) + '...' : m,
+              }))}
+              selected={filters.marketplacesSoldOn}
+              onChange={(values) => setFilter('marketplacesSoldOn', values)}
+              placeholder="Marketplace"
+              className="w-full"
+            />
           </div>
         </CollapsibleContent>
       </Collapsible>
