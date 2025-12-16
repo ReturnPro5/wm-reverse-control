@@ -3,7 +3,7 @@ import { KPICard } from '@/components/dashboard/KPICard';
 import { LifecycleFunnel } from '@/components/dashboard/LifecycleFunnel';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { WeeklyTrendChart } from '@/components/dashboard/WeeklyTrendChart';
-import { RecentUploads } from '@/components/dashboard/RecentUploads';
+import { FileManager } from '@/components/dashboard/FileManager';
 import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
 import { SalesBreakdown } from '@/components/dashboard/SalesBreakdown';
 import { FeeBreakdown } from '@/components/dashboard/FeeBreakdown';
@@ -138,8 +138,8 @@ export function OverviewTab() {
         </div>
       </div>
 
-      {/* Recent Uploads */}
-      <RecentUploads uploads={uploads || []} />
+      {/* File Management */}
+      <FileManager uploads={uploads || []} onRefresh={refetch} />
 
       {/* Refund Warning Card */}
       {refundTotal > 0 && (
