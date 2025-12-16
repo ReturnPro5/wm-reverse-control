@@ -14,6 +14,7 @@ interface GlobalFilterBarProps {
   facilities: string[];
   locations: string[];
   ownerships: string[];
+  clientSources: string[];
   marketplaces: string[];
   fileTypes: string[];
   onRefresh: () => void;
@@ -27,6 +28,7 @@ export function GlobalFilterBar({
   facilities,
   locations,
   ownerships,
+  clientSources,
   marketplaces,
   fileTypes,
   onRefresh,
@@ -218,18 +220,34 @@ export function GlobalFilterBar({
               </SelectContent>
             </Select>
 
-            {/* Client Source */}
+            {/* Client Ownership */}
             <Select 
               value={filters.tagClientOwnership || 'all'} 
               onValueChange={(v) => setFilter('tagClientOwnership', v === 'all' ? undefined : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Ownership" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Ownership</SelectItem>
+                {ownerships.map(o => (
+                  <SelectItem key={o} value={o}>{o}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Client Source */}
+            <Select 
+              value={filters.tagClientSource || 'all'} 
+              onValueChange={(v) => setFilter('tagClientSource', v === 'all' ? undefined : v)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Client Source" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Client Sources</SelectItem>
-                {ownerships.map(o => (
-                  <SelectItem key={o} value={o}>{o}</SelectItem>
+                {clientSources.map(c => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

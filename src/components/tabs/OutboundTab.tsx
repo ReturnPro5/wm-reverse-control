@@ -57,6 +57,7 @@ export function OutboundTab() {
     facilities: [],
     locations: [],
     ownerships: [],
+    clientSources: [],
     marketplaces: [],
     fileTypes: [],
   };
@@ -76,6 +77,7 @@ export function OutboundTab() {
         facilities={options.facilities}
         locations={options.locations}
         ownerships={options.ownerships}
+        clientSources={options.clientSources}
         marketplaces={options.marketplaces}
         fileTypes={options.fileTypes}
         onRefresh={refetch}

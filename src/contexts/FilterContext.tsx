@@ -19,6 +19,7 @@ export interface GlobalFilters {
   facility: string | undefined;
   locationId: string | undefined;
   tagClientOwnership: string | undefined;
+  tagClientSource: string | undefined;
   marketplaceProfileSoldOn: string | undefined;
 }
 
@@ -48,6 +49,7 @@ const defaultFilters: GlobalFilters = {
   facility: undefined,
   locationId: undefined,
   tagClientOwnership: undefined,
+  tagClientSource: undefined,
   marketplaceProfileSoldOn: undefined,
 };
 
