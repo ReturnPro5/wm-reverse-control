@@ -218,16 +218,16 @@ export function GlobalFilterBar({
               </SelectContent>
             </Select>
 
-            {/* Client Ownership */}
+            {/* Client Source */}
             <Select 
               value={filters.tagClientOwnership || 'all'} 
               onValueChange={(v) => setFilter('tagClientOwnership', v === 'all' ? undefined : v)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Ownership" />
+                <SelectValue placeholder="Client Source" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Ownership</SelectItem>
+                <SelectItem value="all">All Client Sources</SelectItem>
                 {ownerships.map(o => (
                   <SelectItem key={o} value={o}>{o}</SelectItem>
                 ))}
