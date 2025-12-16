@@ -113,25 +113,40 @@ export function useFilteredLifecycle() {
   return useQuery({
     queryKey: ['filtered-lifecycle', filters],
     queryFn: async () => {
-      // Fetch units_canonical for Received, CheckedIn, Tested, Listed (with pagination)
+      // First get Inbound file IDs
+      const { data: inboundFiles, error: filesError } = await supabase
+        .from('file_uploads')
+        .select('id')
+        .eq('file_type', 'Inbound');
+      
+      if (filesError) throw filesError;
+      const inboundFileIds = inboundFiles?.map(f => f.id) || [];
+      
+      // Filter out excluded files from inbound file IDs
+      const activeInboundFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
+      
+      // Fetch units_canonical ONLY from Inbound files for Received, CheckedIn, Tested, Listed
       const unitsData: { trgid: string; received_on: string | null; checked_in_on: string | null; tested_on: string | null; first_listed_date: string | null; file_upload_id: string | null }[] = [];
       let offset = 0;
       const batchSize = 1000;
       
-      while (true) {
-        let query = supabase
-          .from('units_canonical')
-          .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, file_upload_id');
-        query = applyFilters(query, filters);
-        query = query.range(offset, offset + batchSize - 1);
-        
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        
-        unitsData.push(...data);
-        if (data.length < batchSize) break;
-        offset += batchSize;
+      if (activeInboundFileIds.length > 0) {
+        while (true) {
+          let query = supabase
+            .from('units_canonical')
+            .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, file_upload_id')
+            .in('file_upload_id', activeInboundFileIds);
+          query = applyFilters(query, filters);
+          query = query.range(offset, offset + batchSize - 1);
+          
+          const { data, error } = await query;
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          
+          unitsData.push(...data);
+          if (data.length < batchSize) break;
+          offset += batchSize;
+        }
       }
       
       const filteredUnits = filterExcludedFiles(unitsData, filters.excludedFileIds);
