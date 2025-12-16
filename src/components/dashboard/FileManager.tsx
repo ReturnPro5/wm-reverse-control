@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { format } from 'date-fns';
-import { FileSpreadsheet, CheckCircle, XCircle, Eye, EyeOff, Trash2, RotateCcw } from 'lucide-react';
+import { FileSpreadsheet, CheckCircle, XCircle, Eye, EyeOff, Trash2, RefreshCw, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useFilters } from '@/contexts/FilterContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useFileUpload } from '@/hooks/useFileUpload';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,12 +47,15 @@ const fileTypeColors: Record<string, string> = {
 export function FileManager({ uploads, onRefresh, className }: FileManagerProps) {
   const { excludeFile, includeFile, isFileExcluded } = useFilters();
   const { toast } = useToast();
+  const { uploadFile, isUploading, uploadProgress } = useFileUpload();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [replacingId, setReplacingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDelete = async (fileId: string, fileName: string) => {
     setDeletingId(fileId);
     try {
-      // Delete from all related tables (cascade should handle this, but being explicit)
+      // Delete from all related tables
       await supabase.from('lifecycle_events').delete().eq('file_upload_id', fileId);
       await supabase.from('sales_metrics').delete().eq('file_upload_id', fileId);
       await supabase.from('fee_metrics').delete().eq('file_upload_id', fileId);
@@ -76,6 +80,56 @@ export function FileManager({ uploads, onRefresh, className }: FileManagerProps)
     }
   };
 
+  const handleReplace = async (fileId: string, fileName: string) => {
+    setReplacingId(fileId);
+    // Trigger file input
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !replacingId) {
+      setReplacingId(null);
+      return;
+    }
+
+    const fileToReplace = uploads.find(u => u.id === replacingId);
+    
+    try {
+      // First delete the old file's data
+      await supabase.from('lifecycle_events').delete().eq('file_upload_id', replacingId);
+      await supabase.from('sales_metrics').delete().eq('file_upload_id', replacingId);
+      await supabase.from('fee_metrics').delete().eq('file_upload_id', replacingId);
+      await supabase.from('units_canonical').delete().eq('file_upload_id', replacingId);
+      await supabase.from('file_uploads').delete().eq('id', replacingId);
+
+      // Upload the new file
+      const result = await uploadFile(file);
+      
+      if (result.success) {
+        toast({
+          title: 'File Replaced',
+          description: `${fileToReplace?.file_name} has been replaced with ${file.name}`,
+        });
+        onRefresh();
+      }
+    } catch (error) {
+      toast({
+        title: 'Replace Failed',
+        description: 'Could not replace the file. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setReplacingId(null);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const toggleFileExclusion = (fileId: string, fileName: string) => {
     if (isFileExcluded(fileId)) {
       includeFile(fileId);
@@ -97,6 +151,15 @@ export function FileManager({ uploads, onRefresh, className }: FileManagerProps)
 
   return (
     <div className={cn('bg-card rounded-lg border p-6', className)}>
+      {/* Hidden file input for replace functionality */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept=".csv"
+        onChange={handleFileSelected}
+      />
+      
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-lg font-semibold">File Management</h3>
@@ -105,17 +168,37 @@ export function FileManager({ uploads, onRefresh, className }: FileManagerProps)
           </p>
         </div>
       </div>
+
+      {/* Upload Progress */}
+      {isUploading && uploadProgress && (
+        <div className="mb-4 p-3 bg-primary/10 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+            <span className="text-sm font-medium">{uploadProgress.message}</span>
+          </div>
+          <div className="w-full bg-muted rounded-full h-2">
+            <div 
+              className="bg-primary h-2 rounded-full transition-all duration-300"
+              style={{ width: `${uploadProgress.progress}%` }}
+            />
+          </div>
+        </div>
+      )}
       
       {uploads.length > 0 ? (
         <div className="space-y-2 max-h-[400px] overflow-y-auto">
           {uploads.map((upload) => {
             const excluded = isFileExcluded(upload.id);
+            const isDeleting = deletingId === upload.id;
+            const isReplacing = replacingId === upload.id;
+            
             return (
               <div
                 key={upload.id}
                 className={cn(
                   'flex items-center gap-3 p-3 rounded-lg transition-all',
-                  excluded ? 'bg-muted/30 opacity-60' : 'bg-muted/50'
+                  excluded ? 'bg-muted/30 opacity-60' : 'bg-muted/50',
+                  (isDeleting || isReplacing) && 'opacity-50 pointer-events-none'
                 )}
               >
                 <FileSpreadsheet className={cn('h-5 w-5 flex-shrink-0', excluded ? 'text-muted-foreground' : 'text-foreground')} />
@@ -160,6 +243,18 @@ export function FileManager({ uploads, onRefresh, className }: FileManagerProps)
                   {excluded ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                 </Button>
 
+                {/* Replace File */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-info hover:text-info"
+                  onClick={() => handleReplace(upload.id, upload.file_name)}
+                  disabled={isReplacing || isUploading}
+                  title="Replace with new file"
+                >
+                  <RefreshCw className={cn('h-4 w-4', isReplacing && 'animate-spin')} />
+                </Button>
+
                 {/* Delete File */}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
@@ -167,7 +262,8 @@ export function FileManager({ uploads, onRefresh, className }: FileManagerProps)
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive hover:text-destructive"
-                      disabled={deletingId === upload.id}
+                      disabled={isDeleting}
+                      title="Delete file"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -202,10 +298,10 @@ export function FileManager({ uploads, onRefresh, className }: FileManagerProps)
       )}
 
       {/* File Management Info */}
-      <div className="mt-4 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
-        <p><strong>Exclude:</strong> Temporarily removes file from all calculations (reversible)</p>
-        <p><strong>Delete:</strong> Permanently removes file and all associated data</p>
-        <p><strong>Re-upload:</strong> Upload corrected file with same name - uses business date for chronology</p>
+      <div className="mt-4 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground space-y-1">
+        <p><Eye className="h-3 w-3 inline mr-1" /><strong>Exclude/Include:</strong> Temporarily hide file from calculations (reversible)</p>
+        <p><RefreshCw className="h-3 w-3 inline mr-1" /><strong>Replace:</strong> Delete old data and upload corrected file</p>
+        <p><Trash2 className="h-3 w-3 inline mr-1" /><strong>Delete:</strong> Permanently remove file and all associated data</p>
       </div>
     </div>
   );
