@@ -34,24 +34,54 @@ export function InboundTab() {
     },
   });
 
-  // Fetch inbound data from units_canonical - only for Inbound file uploads
-  const { data: inboundData, refetch: refetchData } = useQuery({
-    queryKey: ['inbound-units', filters.excludedFileIds, inboundFileIds],
+  // Fetch inbound metrics using RPC or direct count queries for accuracy
+  const { data: inboundMetrics, refetch: refetchData } = useQuery({
+    queryKey: ['inbound-metrics', filters.excludedFileIds, inboundFileIds],
     queryFn: async () => {
-      if (!inboundFileIds || inboundFileIds.length === 0) return [];
+      if (!inboundFileIds || inboundFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
-      // Fetch units only from Inbound file uploads - use limit to bypass default 1000 row limit
-      const { data, error } = await supabase
-        .from('units_canonical')
-        .select('trgid, received_on, checked_in_on, file_upload_id')
-        .not('received_on', 'is', null)
-        .in('file_upload_id', inboundFileIds)
-        .limit(10000);
+      // Filter out excluded file IDs
+      const activeFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
+      if (activeFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
-      if (error) throw error;
+      // Fetch all data in batches to avoid limit issues
+      let allData: { trgid: string; received_on: string | null; checked_in_on: string | null }[] = [];
+      let offset = 0;
+      const batchSize = 1000;
       
-      // Filter out excluded files if needed
-      return data?.filter(d => !filters.excludedFileIds.includes(d.file_upload_id || '')) || [];
+      while (true) {
+        const { data, error } = await supabase
+          .from('units_canonical')
+          .select('trgid, received_on, checked_in_on')
+          .not('received_on', 'is', null)
+          .in('file_upload_id', activeFileIds)
+          .range(offset, offset + batchSize - 1);
+        
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        
+        allData = [...allData, ...data];
+        if (data.length < batchSize) break;
+        offset += batchSize;
+      }
+      
+      // Calculate metrics
+      const received = allData.length;
+      const checkedIn = allData.filter(u => u.checked_in_on !== null).length;
+      
+      // Group by date for chart
+      const dailyMap = allData.reduce((acc, unit) => {
+        const date = unit.received_on;
+        if (!date) return acc;
+        if (!acc[date]) acc[date] = { date, Received: 0, CheckedIn: 0 };
+        acc[date].Received++;
+        if (unit.checked_in_on) acc[date].CheckedIn++;
+        return acc;
+      }, {} as Record<string, { date: string; Received: number; CheckedIn: number }>);
+      
+      const dailyData = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+      
+      return { received, checkedIn, dailyData };
     },
     enabled: !!inboundFileIds && inboundFileIds.length > 0,
   });
@@ -61,29 +91,14 @@ export function InboundTab() {
     refetchData();
   };
 
-  // Calculate metrics from units_canonical
-  const units = inboundData || [];
-  const receivedCount = units.length;
-  const checkedInCount = units.filter(u => u.checked_in_on !== null).length;
+  // Use pre-calculated metrics
+  const receivedCount = inboundMetrics?.received || 0;
+  const checkedInCount = inboundMetrics?.checkedIn || 0;
   const checkInRate = receivedCount > 0 ? (checkedInCount / receivedCount) * 100 : 0;
   const pendingCheckIn = receivedCount - checkedInCount;
 
-  // Group by received_on date for chart
-  const dailyData = units.reduce((acc, unit) => {
-    const date = unit.received_on;
-    if (!date) return acc;
-    
-    if (!acc[date]) {
-      acc[date] = { date, Received: 0, CheckedIn: 0 };
-    }
-    acc[date].Received++;
-    if (unit.checked_in_on) acc[date].CheckedIn++;
-    return acc;
-  }, {} as Record<string, { date: string; Received: number; CheckedIn: number }>);
-
-  const chartData = Object.values(dailyData)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-14);
+  // Chart data from metrics
+  const chartData = inboundMetrics?.dailyData || [];
 
   const options = filterOptions || {
     programs: [],
