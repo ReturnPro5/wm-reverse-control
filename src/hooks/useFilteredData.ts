@@ -125,8 +125,8 @@ export function useFilteredLifecycle() {
       // Filter out excluded files from inbound file IDs
       const activeInboundFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
       
-      // Fetch units_canonical ONLY from Inbound files for Received, CheckedIn, Tested, Listed
-      const unitsData: { trgid: string; received_on: string | null; checked_in_on: string | null; tested_on: string | null; first_listed_date: string | null; file_upload_id: string | null }[] = [];
+      // Fetch units_canonical ONLY from Inbound files for ALL stages
+      const unitsData: { trgid: string; received_on: string | null; checked_in_on: string | null; tested_on: string | null; first_listed_date: string | null; order_closed_date: string | null; file_upload_id: string | null }[] = [];
       let offset = 0;
       const batchSize = 1000;
       
@@ -134,7 +134,7 @@ export function useFilteredLifecycle() {
         while (true) {
           let query = supabase
             .from('units_canonical')
-            .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, file_upload_id')
+            .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, order_closed_date, file_upload_id')
             .in('file_upload_id', activeInboundFileIds);
           query = applyFilters(query, filters);
           query = query.range(offset, offset + batchSize - 1);
@@ -151,53 +151,19 @@ export function useFilteredLifecycle() {
       
       const filteredUnits = filterExcludedFiles(unitsData, filters.excludedFileIds);
       
-      // Deduplicate by trgid for each stage (a unit can only be received/checked-in/listed once)
+      // Deduplicate by trgid for each stage
       const receivedTrgids = new Set<string>();
       const checkedInTrgids = new Set<string>();
       const testedTrgids = new Set<string>();
       const listedTrgids = new Set<string>();
+      const soldTrgids = new Set<string>();
       
       filteredUnits.forEach(unit => {
         if (unit.received_on) receivedTrgids.add(unit.trgid);
         if (unit.checked_in_on) checkedInTrgids.add(unit.trgid);
         if (unit.tested_on) testedTrgids.add(unit.trgid);
         if (unit.first_listed_date) listedTrgids.add(unit.trgid);
-      });
-      
-      // Get all inbound trgids for intersection with sales
-      const inboundTrgids = new Set<string>();
-      filteredUnits.forEach(unit => inboundTrgids.add(unit.trgid));
-      
-      // Fetch sales_metrics for Sold count (with pagination)
-      const salesData: { trgid: string; file_upload_id: string | null }[] = [];
-      offset = 0;
-      
-      while (true) {
-        let query = supabase
-          .from('sales_metrics')
-          .select('trgid, file_upload_id')
-          .neq('marketplace_profile_sold_on', 'Transfer')
-          .gt('sale_price', 0);
-        query = applyFilters(query, filters);
-        query = query.range(offset, offset + batchSize - 1);
-        
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        
-        salesData.push(...data);
-        if (data.length < batchSize) break;
-        offset += batchSize;
-      }
-      
-      const filteredSales = filterExcludedFiles(salesData, filters.excludedFileIds);
-      
-      // Only count sold units that exist in inbound files (intersection)
-      const soldTrgids = new Set<string>();
-      filteredSales.forEach(sale => {
-        if (inboundTrgids.has(sale.trgid)) {
-          soldTrgids.add(sale.trgid);
-        }
+        if (unit.order_closed_date) soldTrgids.add(unit.trgid);
       });
       
       const counts: Record<string, number> = {
