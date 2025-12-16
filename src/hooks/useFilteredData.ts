@@ -164,6 +164,10 @@ export function useFilteredLifecycle() {
         if (unit.first_listed_date) listedTrgids.add(unit.trgid);
       });
       
+      // Get all inbound trgids for intersection with sales
+      const inboundTrgids = new Set<string>();
+      filteredUnits.forEach(unit => inboundTrgids.add(unit.trgid));
+      
       // Fetch sales_metrics for Sold count (with pagination)
       const salesData: { trgid: string; file_upload_id: string | null }[] = [];
       offset = 0;
@@ -188,9 +192,13 @@ export function useFilteredLifecycle() {
       
       const filteredSales = filterExcludedFiles(salesData, filters.excludedFileIds);
       
-      // Deduplicate sold trgids
+      // Only count sold units that exist in inbound files (intersection)
       const soldTrgids = new Set<string>();
-      filteredSales.forEach(sale => soldTrgids.add(sale.trgid));
+      filteredSales.forEach(sale => {
+        if (inboundTrgids.has(sale.trgid)) {
+          soldTrgids.add(sale.trgid);
+        }
+      });
       
       const counts: Record<string, number> = {
         Received: receivedTrgids.size,
