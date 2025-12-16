@@ -40,13 +40,13 @@ export function InboundTab() {
     queryFn: async () => {
       if (!inboundFileIds || inboundFileIds.length === 0) return [];
       
-      // Fetch units only from Inbound file uploads
+      // Fetch units only from Inbound file uploads - use limit to bypass default 1000 row limit
       const { data, error } = await supabase
         .from('units_canonical')
         .select('trgid, received_on, checked_in_on, file_upload_id')
         .not('received_on', 'is', null)
         .in('file_upload_id', inboundFileIds)
-        .range(0, 50000);
+        .limit(10000);
       
       if (error) throw error;
       
@@ -159,7 +159,11 @@ export function InboundTab() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis 
                   dataKey="date" 
-                  tickFormatter={(d) => format(new Date(d), 'MMM d')}
+                  tickFormatter={(d) => {
+                    // Parse date string directly to avoid timezone issues
+                    const [year, month, day] = d.split('-').map(Number);
+                    return format(new Date(year, month - 1, day), 'MMM d');
+                  }}
                   tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                 />
                 <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
@@ -169,7 +173,10 @@ export function InboundTab() {
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px',
                   }}
-                  labelFormatter={(d) => format(new Date(d), 'MMMM d, yyyy')}
+                  labelFormatter={(d) => {
+                    const [year, month, day] = d.split('-').map(Number);
+                    return format(new Date(year, month - 1, day), 'MMMM d, yyyy');
+                  }}
                 />
                 <Legend />
                 <Bar dataKey="Received" fill="hsl(var(--info))" name="Received" radius={[4, 4, 0, 0]} />
