@@ -107,7 +107,7 @@ export function SalesTab() {
         <KPICard
           title="Units Sold"
           value={unitsCount.toLocaleString()}
-          subtitle="Total units with OrderClosedDate"
+          subtitle="Excludes Transfers & $0 sales"
           icon={<Package className="h-5 w-5" />}
           variant="info"
         />

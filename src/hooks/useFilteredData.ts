@@ -154,6 +154,9 @@ export function useFilteredSales() {
       while (true) {
         let query = supabase.from('sales_metrics').select('*');
         query = applyFilters(query, filters);
+        // Exclude transfers and $0 sales for accurate unit counts
+        query = query.neq('marketplace_profile_sold_on', 'Transfer');
+        query = query.gt('sale_price', 0);
         query = query.range(from, from + pageSize - 1);
         
         const { data, error } = await query;
