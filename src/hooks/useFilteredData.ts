@@ -2,14 +2,25 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useFilters, GlobalFilters } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
+import { getWMWeekNumber } from '@/lib/wmWeek';
+
+// Calculate WM week from a date string (YYYY-MM-DD)
+function getWMWeekFromDateString(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  return getWMWeekNumber(date);
+}
 
 // Build a Supabase query with all global filters applied (multi-select arrays)
+// NOTE: This does NOT apply wmWeeks filter - that's handled per-date-field for lifecycle
 function applyFilters<T extends { eq: any; not: any; in: any }>(
   query: T,
   filters: GlobalFilters,
+  options: { skipWmWeeks?: boolean } = {},
 ): T {
   // Data filters - use .in() for arrays
-  if (filters.wmWeeks.length > 0) {
+  if (!options.skipWmWeeks && filters.wmWeeks.length > 0) {
     query = query.in('wm_week', filters.wmWeeks);
   }
   if (filters.wmDaysOfWeek.length > 0) {
@@ -113,8 +124,18 @@ export function useFilteredLifecycle() {
       // Filter out excluded files from inbound file IDs
       const activeInboundFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
       
-      // Fetch units_canonical ONLY from Inbound files for ALL stages
-      const unitsData: { trgid: string; received_on: string | null; checked_in_on: string | null; tested_on: string | null; first_listed_date: string | null; order_closed_date: string | null; file_upload_id: string | null }[] = [];
+      // Fetch units_canonical ONLY from Inbound files - WITHOUT wm_week filter at DB level
+      // We'll calculate WM week per stage date client-side
+      type UnitRow = { 
+        trgid: string; 
+        received_on: string | null; 
+        checked_in_on: string | null; 
+        tested_on: string | null; 
+        first_listed_date: string | null; 
+        order_closed_date: string | null; 
+        file_upload_id: string | null;
+      };
+      const unitsData: UnitRow[] = [];
       let offset = 0;
       const batchSize = 1000;
       
@@ -124,7 +145,9 @@ export function useFilteredLifecycle() {
             .from('units_canonical')
             .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, order_closed_date, file_upload_id')
             .in('file_upload_id', activeInboundFileIds);
-          query = applyFilters(query, filters);
+          
+          // Apply filters EXCEPT wmWeeks - we handle that per-stage-date
+          query = applyFilters(query, filters, { skipWmWeeks: true });
           query = query.range(offset, offset + batchSize - 1);
           
           const { data, error } = await query;
@@ -139,7 +162,19 @@ export function useFilteredLifecycle() {
       
       const filteredUnits = filterExcludedFiles(unitsData, filters.excludedFileIds);
       
-      // Deduplicate by trgid for each stage
+      // For each stage, dedupe by trgid and filter by WM week of that stage's date
+      const selectedWeeks = filters.wmWeeks;
+      const hasWeekFilter = selectedWeeks.length > 0;
+      
+      // Helper: check if a date matches the week filter
+      const matchesWeekFilter = (dateStr: string | null): boolean => {
+        if (!hasWeekFilter) return true; // No filter = include all
+        if (!dateStr) return false; // No date = can't match
+        const wmWeek = getWMWeekFromDateString(dateStr);
+        return wmWeek !== null && selectedWeeks.includes(wmWeek);
+      };
+      
+      // Deduplicate by trgid for each stage, filtered by that stage's date week
       const receivedTrgids = new Set<string>();
       const checkedInTrgids = new Set<string>();
       const testedTrgids = new Set<string>();
@@ -147,11 +182,22 @@ export function useFilteredLifecycle() {
       const soldTrgids = new Set<string>();
       
       filteredUnits.forEach(unit => {
-        if (unit.received_on) receivedTrgids.add(unit.trgid);
-        if (unit.checked_in_on) checkedInTrgids.add(unit.trgid);
-        if (unit.tested_on) testedTrgids.add(unit.trgid);
-        if (unit.first_listed_date) listedTrgids.add(unit.trgid);
-        if (unit.order_closed_date) soldTrgids.add(unit.trgid);
+        // Each stage checks if its own date matches the week filter
+        if (unit.received_on && matchesWeekFilter(unit.received_on)) {
+          receivedTrgids.add(unit.trgid);
+        }
+        if (unit.checked_in_on && matchesWeekFilter(unit.checked_in_on)) {
+          checkedInTrgids.add(unit.trgid);
+        }
+        if (unit.tested_on && matchesWeekFilter(unit.tested_on)) {
+          testedTrgids.add(unit.trgid);
+        }
+        if (unit.first_listed_date && matchesWeekFilter(unit.first_listed_date)) {
+          listedTrgids.add(unit.trgid);
+        }
+        if (unit.order_closed_date && matchesWeekFilter(unit.order_closed_date)) {
+          soldTrgids.add(unit.trgid);
+        }
       });
       
       const counts: Record<string, number> = {
