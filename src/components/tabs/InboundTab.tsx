@@ -19,6 +19,15 @@ import { useFilterOptions, useFilteredLifecycle } from '@/hooks/useFilteredData'
 import { useFilters } from '@/contexts/FilterContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getWMWeekNumber } from '@/lib/wmWeek';
+
+// Calculate WM week from a date string (YYYY-MM-DD)
+function getWMWeekFromDateString(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  return getWMWeekNumber(date);
+}
 
 export function InboundTab() {
   const queryClient = useQueryClient();
@@ -39,9 +48,9 @@ export function InboundTab() {
     },
   });
 
-  // Fetch inbound metrics using RPC or direct count queries for accuracy
+  // Fetch inbound metrics with proper week filtering and deduplication
   const { data: inboundMetrics, refetch: refetchData } = useQuery({
-    queryKey: ['inbound-metrics', filters.excludedFileIds, inboundFileIds],
+    queryKey: ['inbound-metrics', filters.excludedFileIds, filters.wmWeeks, inboundFileIds],
     queryFn: async () => {
       if (!inboundFileIds || inboundFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
@@ -50,7 +59,8 @@ export function InboundTab() {
       if (activeFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
       // Fetch all data in batches to avoid limit issues
-      let allData: { trgid: string; received_on: string | null; checked_in_on: string | null }[] = [];
+      type UnitRow = { trgid: string; received_on: string | null; checked_in_on: string | null };
+      let allData: UnitRow[] = [];
       let offset = 0;
       const batchSize = 1000;
       
@@ -70,12 +80,40 @@ export function InboundTab() {
         offset += batchSize;
       }
       
-      // Calculate metrics
-      const received = allData.length;
-      const checkedIn = allData.filter(u => u.checked_in_on !== null).length;
+      const selectedWeeks = filters.wmWeeks;
+      const hasWeekFilter = selectedWeeks.length > 0;
+      
+      // Deduplicate by trgid - keep the most recent date record
+      const trgidMap = new Map<string, UnitRow>();
+      allData.forEach(unit => {
+        const existing = trgidMap.get(unit.trgid);
+        if (!existing) {
+          trgidMap.set(unit.trgid, unit);
+        } else {
+          // Keep the one with the most recent received_on date
+          const existingDate = existing.received_on || '';
+          const newDate = unit.received_on || '';
+          if (newDate > existingDate) {
+            trgidMap.set(unit.trgid, unit);
+          }
+        }
+      });
+      
+      // Filter by WM week if filter is active - use received_on date for week assignment
+      let filteredUnits = Array.from(trgidMap.values());
+      if (hasWeekFilter) {
+        filteredUnits = filteredUnits.filter(unit => {
+          const wmWeek = getWMWeekFromDateString(unit.received_on);
+          return wmWeek !== null && selectedWeeks.includes(wmWeek);
+        });
+      }
+      
+      // Calculate metrics from deduplicated data
+      const received = filteredUnits.length;
+      const checkedIn = filteredUnits.filter(u => u.checked_in_on !== null).length;
       
       // Group by date for chart
-      const dailyMap = allData.reduce((acc, unit) => {
+      const dailyMap = filteredUnits.reduce((acc, unit) => {
         const date = unit.received_on;
         if (!date) return acc;
         if (!acc[date]) acc[date] = { date, Received: 0, CheckedIn: 0 };
