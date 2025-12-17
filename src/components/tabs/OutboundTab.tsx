@@ -1,6 +1,7 @@
 import { KPICard } from '@/components/dashboard/KPICard';
 import { FeeBreakdown } from '@/components/dashboard/FeeBreakdown';
 import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { Truck, DollarSign, Package, Receipt } from 'lucide-react';
 import { 
   BarChart, 
@@ -205,6 +206,9 @@ export function OutboundTab() {
           </table>
         </div>
       </div>
+
+      {/* Upload Section */}
+      <FileUploadZone onUploadComplete={refetch} />
     </div>
   );
 }

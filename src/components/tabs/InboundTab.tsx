@@ -1,5 +1,7 @@
 import { KPICard } from '@/components/dashboard/KPICard';
 import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { LifecycleFunnel } from '@/components/dashboard/LifecycleFunnel';
+import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { Package, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 import { 
   BarChart, 
@@ -12,13 +14,15 @@ import {
   Legend
 } from 'recharts';
 import { format } from 'date-fns';
-import { useFilterOptions } from '@/hooks/useFilteredData';
+import { useFilterOptions, useFilteredLifecycle } from '@/hooks/useFilteredData';
 import { useFilters } from '@/contexts/FilterContext';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export function InboundTab() {
+  const queryClient = useQueryClient();
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
+  const { data: funnel, refetch: refetchFunnel } = useFilteredLifecycle();
   const { filters } = useFilters();
   
   // First get inbound file IDs
@@ -88,7 +92,9 @@ export function InboundTab() {
 
   const refetch = () => {
     refetchOptions();
+    refetchFunnel();
     refetchData();
+    queryClient.invalidateQueries({ queryKey: ['inbound-file-ids'] });
   };
 
   // Use pre-calculated metrics
@@ -165,6 +171,9 @@ export function InboundTab() {
         />
       </div>
 
+      {/* Lifecycle Funnel */}
+      <LifecycleFunnel data={funnel || []} />
+
       {/* Daily Inbound Chart */}
       <div className="bg-card rounded-lg border p-6">
         <h3 className="text-lg font-semibold mb-6">Daily Inbound Volume</h3>
@@ -216,6 +225,9 @@ export function InboundTab() {
           Pending check-in represents units that have been received but not yet processed.
         </p>
       </div>
+
+      {/* Upload Section */}
+      <FileUploadZone onUploadComplete={refetch} />
     </div>
   );
 }

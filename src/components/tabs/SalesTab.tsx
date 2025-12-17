@@ -1,5 +1,6 @@
 import { KPICard } from '@/components/dashboard/KPICard';
 import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle } from 'lucide-react';
 import { 
   XAxis, 
@@ -218,6 +219,9 @@ export function SalesTab() {
           </div>
         </div>
       )}
+
+      {/* Upload Section */}
+      <FileUploadZone onUploadComplete={refetch} />
     </div>
   );
 }
