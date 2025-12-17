@@ -324,7 +324,13 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      file_type: "Sales" | "Inbound" | "Outbound" | "Inventory" | "Unknown"
+      file_type:
+        | "Sales"
+        | "Inbound"
+        | "Outbound"
+        | "Inventory"
+        | "Unknown"
+        | "Production"
       lifecycle_stage: "Received" | "CheckedIn" | "Tested" | "Listed" | "Sold"
     }
     CompositeTypes: {
@@ -453,7 +459,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      file_type: ["Sales", "Inbound", "Outbound", "Inventory", "Unknown"],
+      file_type: [
+        "Sales",
+        "Inbound",
+        "Outbound",
+        "Inventory",
+        "Unknown",
+        "Production",
+      ],
       lifecycle_stage: ["Received", "CheckedIn", "Tested", "Listed", "Sold"],
     },
   },

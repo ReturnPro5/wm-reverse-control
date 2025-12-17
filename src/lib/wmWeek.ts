@@ -107,15 +107,25 @@ export function parseFileBusinessDate(fileName: string): Date | null {
   return null;
 }
 
-export function determineFileType(fileName: string): 'Sales' | 'Inbound' | 'Outbound' | 'Inventory' | 'Unknown' {
+export function determineFileType(fileName: string): 'Sales' | 'Inbound' | 'Outbound' | 'Inventory' | 'Production' | 'Unknown' {
   const lowerName = fileName.toLowerCase();
   
   if (lowerName.includes('sales')) return 'Sales';
   if (lowerName.includes('inbound')) return 'Inbound';
   if (lowerName.includes('outbound')) return 'Outbound';
   if (lowerName.includes('inventory')) return 'Inventory';
+  if (lowerName.includes('production') || lowerName.includes('processing')) return 'Production';
   
-  return 'Unknown';
+  // Smart fallback based on common file naming patterns
+  // Files without explicit type keywords default based on content indicators in name
+  if (lowerName.includes('recv') || lowerName.includes('receipt')) return 'Inbound';
+  if (lowerName.includes('ship') || lowerName.includes('fulfill')) return 'Outbound';
+  if (lowerName.includes('order') || lowerName.includes('sold')) return 'Sales';
+  if (lowerName.includes('test') || lowerName.includes('list')) return 'Production';
+  if (lowerName.includes('stock') || lowerName.includes('wip')) return 'Inventory';
+  
+  // Final fallback - return Inbound as default since most operations start with receiving
+  return 'Inbound';
 }
 
 export const WM_DAY_NAMES = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const;

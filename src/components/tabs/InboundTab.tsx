@@ -2,8 +2,9 @@ import { KPICard } from '@/components/dashboard/KPICard';
 import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
 import { LifecycleFunnel } from '@/components/dashboard/LifecycleFunnel';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
+import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { Package, CheckCircle, Clock, TrendingUp } from 'lucide-react';
-import { 
+import {
   BarChart, 
   Bar, 
   XAxis, 
@@ -225,6 +226,9 @@ export function InboundTab() {
           Pending check-in represents units that have been received but not yet processed.
         </p>
       </div>
+
+      {/* File Manager */}
+      <TabFileManager fileType="Inbound" onFilesChanged={refetch} />
 
       {/* Upload Section */}
       <FileUploadZone onUploadComplete={refetch} />

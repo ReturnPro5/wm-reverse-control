@@ -33,11 +33,16 @@ export function useFileUpload() {
         throw new Error('No valid data found in file');
       }
 
-      if (fileType === 'Unknown') {
+      // Show info toast if file type was auto-detected from smart fallback
+      const detectedType = determineFileType(file.name);
+      const isExplicitType = ['sales', 'inbound', 'outbound', 'inventory', 'production', 'processing'].some(
+        keyword => file.name.toLowerCase().includes(keyword)
+      );
+      
+      if (!isExplicitType) {
         toast({
-          title: 'Warning',
-          description: 'Could not determine file type from filename. Please use naming convention: Sales/Inbound/Outbound/Inventory MM.DD.YY',
-          variant: 'destructive',
+          title: 'File Type Auto-Detected',
+          description: `File categorized as "${detectedType}" based on filename. For best results, use naming like: Sales_MM.DD.YY, Inbound_MM.DD.YY, Outbound_MM.DD.YY, Production_MM.DD.YY`,
         });
       }
 
