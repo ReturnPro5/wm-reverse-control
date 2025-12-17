@@ -1,5 +1,5 @@
 import { KPICard } from '@/components/dashboard/KPICard';
-import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { ShoppingCart, DollarSign, Percent, Package } from 'lucide-react';
 import { 
   BarChart, 
@@ -15,7 +15,8 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
-import { useFilters } from '@/contexts/FilterContext';
+
+const TAB_NAME = 'dsv' as const;
 
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -24,9 +25,8 @@ const formatCurrency = (value: number) => {
 };
 
 export function DSVTab() {
-  const { filters } = useFilters();
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
-  const { data: allSalesData, refetch: refetchData } = useFilteredSales();
+  const { data: allSalesData, refetch: refetchData } = useFilteredSales(TAB_NAME);
 
   const refetch = () => {
     refetchOptions();
@@ -99,8 +99,9 @@ export function DSVTab() {
         <p className="text-muted-foreground">Drop Ship Vendor program sales metrics</p>
       </div>
 
-      {/* Global Filters */}
-      <GlobalFilterBar
+      {/* Tab-Specific Filters */}
+      <TabFilterBar
+        tabName={TAB_NAME}
         programs={options.programs}
         masterPrograms={options.masterPrograms}
         categories={options.categories}
