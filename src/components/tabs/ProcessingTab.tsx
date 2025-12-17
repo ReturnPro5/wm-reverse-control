@@ -1,5 +1,7 @@
 import { KPICard } from '@/components/dashboard/KPICard';
 import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
+import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { TestTube, Tag, Clock, Activity } from 'lucide-react';
 import { 
   AreaChart, 
@@ -12,45 +14,97 @@ import {
   Legend
 } from 'recharts';
 import { format } from 'date-fns';
-import { useFilterOptions, useFilteredLifecycleEvents, useFilteredLifecycle } from '@/hooks/useFilteredData';
+import { useFilterOptions } from '@/hooks/useFilteredData';
+import { useFilters } from '@/contexts/FilterContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 export function ProcessingTab() {
+  const queryClient = useQueryClient();
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
-  const { data: processingData, refetch: refetchData } = useFilteredLifecycleEvents();
-  const { data: funnelData, refetch: refetchFunnel } = useFilteredLifecycle();
+  const { filters } = useFilters();
+
+  // First get production file IDs
+  const { data: productionFileIds } = useQuery({
+    queryKey: ['production-file-ids'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('file_uploads')
+        .select('id')
+        .eq('file_type', 'Production');
+      
+      if (error) throw error;
+      return data?.map(f => f.id) || [];
+    },
+  });
+
+  // Fetch units from Production files only
+  const { data: productionUnits, refetch: refetchData } = useQuery({
+    queryKey: ['production-units', productionFileIds, filters],
+    queryFn: async () => {
+      if (!productionFileIds || productionFileIds.length === 0) return [];
+      
+      let query = supabase
+        .from('units_canonical')
+        .select('*')
+        .in('file_upload_id', productionFileIds);
+      
+      // Apply filters
+      if (filters.programNames.length > 0) {
+        query = query.in('program_name', filters.programNames);
+      }
+      if (filters.facilities.length > 0) {
+        query = query.in('facility', filters.facilities);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!productionFileIds && productionFileIds.length > 0,
+  });
 
   const refetch = () => {
     refetchOptions();
     refetchData();
-    refetchFunnel();
+    queryClient.invalidateQueries({ queryKey: ['production-file-ids'] });
+    queryClient.invalidateQueries({ queryKey: ['file-uploads', 'Production'] });
   };
 
-  // Filter to processing stages only
-  const processingEvents = processingData?.filter(e => e.stage === 'Tested' || e.stage === 'Listed') || [];
-
-  // Calculate metrics from events
-  const testedCount = processingEvents.filter(e => e.stage === 'Tested').length;
-  const listedCount = processingEvents.filter(e => e.stage === 'Listed').length;
+  // Calculate metrics from production units
+  const testedCount = productionUnits?.filter(u => u.tested_on).length || 0;
+  const listedCount = productionUnits?.filter(u => u.first_listed_date).length || 0;
   const listingRate = testedCount > 0 ? (listedCount / testedCount) * 100 : 0;
 
-  // Get WIP count from funnel data (current state, not events)
-  const wipStages = ['Received', 'CheckedIn', 'Tested', 'Listed'];
-  const wipCount = funnelData?.filter(f => wipStages.includes(f.stage)).reduce((sum, f) => sum + f.count, 0) || 0;
-  const wipByStage = wipStages.reduce((acc, stage) => {
-    acc[stage] = funnelData?.find(f => f.stage === stage)?.count || 0;
-    return acc;
-  }, {} as Record<string, number>);
+  // WIP = units that are not yet sold
+  const wipCount = productionUnits?.filter(u => !u.order_closed_date).length || 0;
+  
+  // WIP breakdown by stage
+  const wipByStage = {
+    Received: productionUnits?.filter(u => u.received_on && !u.checked_in_on && !u.order_closed_date).length || 0,
+    CheckedIn: productionUnits?.filter(u => u.checked_in_on && !u.tested_on && !u.order_closed_date).length || 0,
+    Tested: productionUnits?.filter(u => u.tested_on && !u.first_listed_date && !u.order_closed_date).length || 0,
+    Listed: productionUnits?.filter(u => u.first_listed_date && !u.order_closed_date).length || 0,
+  };
 
-  // Group by date for chart
-  const dailyData = processingEvents.reduce((acc, event) => {
-    const date = event.event_date;
-    if (!acc[date]) {
-      acc[date] = { date, Tested: 0, Listed: 0 };
+  // Group by tested_on date for chart
+  const dailyData = productionUnits?.reduce((acc, unit) => {
+    if (unit.tested_on) {
+      const date = unit.tested_on;
+      if (!acc[date]) {
+        acc[date] = { date, Tested: 0, Listed: 0 };
+      }
+      acc[date].Tested++;
     }
-    if (event.stage === 'Tested') acc[date].Tested++;
-    if (event.stage === 'Listed') acc[date].Listed++;
+    if (unit.first_listed_date) {
+      const date = unit.first_listed_date;
+      if (!acc[date]) {
+        acc[date] = { date, Tested: 0, Listed: 0 };
+      }
+      acc[date].Listed++;
+    }
     return acc;
-  }, {} as Record<string, { date: string; Tested: number; Listed: number }>);
+  }, {} as Record<string, { date: string; Tested: number; Listed: number }>) || {};
 
   const chartData = Object.values(dailyData)
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -68,11 +122,13 @@ export function ProcessingTab() {
     fileTypes: [],
   };
 
+  const wipStages = ['Received', 'CheckedIn', 'Tested', 'Listed'] as const;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold">Processing & Inventory</h2>
-        <p className="text-muted-foreground">Testing and listing throughput metrics</p>
+        <p className="text-muted-foreground">Testing and listing throughput from Production files</p>
       </div>
 
       {/* Global Filters */}
@@ -142,7 +198,7 @@ export function ProcessingTab() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis 
                   dataKey="date" 
-                  tickFormatter={(d) => format(new Date(d), 'MMM d')}
+                  tickFormatter={(d) => format(new Date(d + 'T12:00:00'), 'MMM d')}
                   tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                 />
                 <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
@@ -152,7 +208,7 @@ export function ProcessingTab() {
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px',
                   }}
-                  labelFormatter={(d) => format(new Date(d), 'MMMM d, yyyy')}
+                  labelFormatter={(d) => format(new Date(d + 'T12:00:00'), 'MMMM d, yyyy')}
                 />
                 <Legend />
                 <Area 
@@ -174,7 +230,7 @@ export function ProcessingTab() {
           </div>
         ) : (
           <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-            No processing data available. Upload files to see throughput metrics.
+            No processing data available. Upload Production files to see throughput metrics.
           </div>
         )}
       </div>
@@ -191,6 +247,12 @@ export function ProcessingTab() {
           ))}
         </div>
       </div>
+
+      {/* File Manager */}
+      <TabFileManager fileType="Production" onFilesChanged={refetch} />
+
+      {/* Upload Section */}
+      <FileUploadZone onUploadComplete={refetch} />
     </div>
   );
 }
