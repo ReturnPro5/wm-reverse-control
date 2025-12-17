@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { OverviewTab } from '@/components/tabs/OverviewTab';
 import { InboundTab } from '@/components/tabs/InboundTab';
 import { ProcessingTab } from '@/components/tabs/ProcessingTab';
 import { SalesTab } from '@/components/tabs/SalesTab';
@@ -9,12 +8,10 @@ import { MarketplaceTab } from '@/components/tabs/MarketplaceTab';
 import { DSVTab } from '@/components/tabs/DSVTab';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('inbound');
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'overview':
-        return <OverviewTab />;
       case 'inbound':
         return <InboundTab />;
       case 'processing':
@@ -28,7 +25,7 @@ const Index = () => {
       case 'dsv':
         return <DSVTab />;
       default:
-        return <OverviewTab />;
+        return <InboundTab />;
     }
   };
 

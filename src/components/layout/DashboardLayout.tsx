@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { 
-  LayoutDashboard, 
   Download, 
   Settings, 
-  Upload, 
-  TrendingUp, 
   Package, 
   DollarSign,
   Truck,
@@ -21,7 +18,6 @@ interface DashboardLayoutProps {
 }
 
 const tabs = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'inbound', label: 'Inbound', icon: Download },
   { id: 'processing', label: 'Processing', icon: Settings },
   { id: 'sales', label: 'Sales', icon: DollarSign },
