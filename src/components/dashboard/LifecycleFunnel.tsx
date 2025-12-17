@@ -21,6 +21,7 @@ const stageConfig = {
 };
 
 export function LifecycleFunnel({ data, className }: LifecycleFunnelProps) {
+  const receivedCount = data.find(d => d.stage === 'Received')?.count || 1;
   const maxCount = Math.max(...data.map(d => d.count), 1);
 
   return (
@@ -51,7 +52,7 @@ export function LifecycleFunnel({ data, className }: LifecycleFunnelProps) {
                 <div className="text-right">
                   <span className="text-lg font-bold">{stage.count.toLocaleString()}</span>
                   <span className="text-xs text-muted-foreground ml-1">
-                    ({stage.percentage.toFixed(1)}%)
+                    ({((stage.count / receivedCount) * 100).toFixed(1)}% of received)
                   </span>
                 </div>
               </div>
