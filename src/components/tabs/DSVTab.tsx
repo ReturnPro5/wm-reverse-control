@@ -33,10 +33,9 @@ export function DSVTab() {
     refetchData();
   };
 
-  // Filter to DSV sales only
+  // Filter to Walmart DSV sales only (by marketplace)
   const dsvData = allSalesData?.filter(
-    sale => sale.master_program_name?.toLowerCase().includes('dsv') || 
-            sale.program_name?.toLowerCase().includes('dsv')
+    sale => sale.marketplace_profile_sold_on === 'Walmart DSV'
   ) || [];
 
   // Calculate metrics
