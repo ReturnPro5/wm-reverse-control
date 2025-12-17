@@ -61,6 +61,36 @@ function filterExcludedFiles<T extends { file_upload_id?: string | null }>(
   return data.filter(row => !row.file_upload_id || !excludedFileIds.includes(row.file_upload_id));
 }
 
+// Helper to fetch all distinct values from a column with pagination
+async function fetchAllDistinctValues(
+  table: 'units_canonical' | 'sales_metrics' | 'file_uploads',
+  column: string
+): Promise<string[]> {
+  const allValues = new Set<string>();
+  let offset = 0;
+  const batchSize = 1000;
+  
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(column)
+      .not(column, 'is', null)
+      .range(offset, offset + batchSize - 1);
+    
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    
+    data.forEach((row: any) => {
+      if (row[column]) allValues.add(row[column]);
+    });
+    
+    if (data.length < batchSize) break;
+    offset += batchSize;
+  }
+  
+  return Array.from(allValues);
+}
+
 export function useFilterOptions() {
   return useQuery({
     queryKey: ['filter-options-global'],
@@ -76,27 +106,27 @@ export function useFilterOptions() {
         marketplaces,
         fileTypes,
       ] = await Promise.all([
-        supabase.from('units_canonical').select('program_name').not('program_name', 'is', null),
-        supabase.from('units_canonical').select('master_program_name').not('master_program_name', 'is', null),
-        supabase.from('units_canonical').select('category_name').not('category_name', 'is', null),
-        supabase.from('units_canonical').select('facility').not('facility', 'is', null),
-        supabase.from('units_canonical').select('location_id').not('location_id', 'is', null),
-        supabase.from('units_canonical').select('tag_client_ownership').not('tag_client_ownership', 'is', null),
-        supabase.from('units_canonical').select('tag_clientsource').not('tag_clientsource', 'is', null),
-        supabase.from('sales_metrics').select('marketplace_profile_sold_on').not('marketplace_profile_sold_on', 'is', null),
-        supabase.from('file_uploads').select('file_type'),
+        fetchAllDistinctValues('units_canonical', 'program_name'),
+        fetchAllDistinctValues('units_canonical', 'master_program_name'),
+        fetchAllDistinctValues('units_canonical', 'category_name'),
+        fetchAllDistinctValues('units_canonical', 'facility'),
+        fetchAllDistinctValues('units_canonical', 'location_id'),
+        fetchAllDistinctValues('units_canonical', 'tag_client_ownership'),
+        fetchAllDistinctValues('units_canonical', 'tag_clientsource'),
+        fetchAllDistinctValues('sales_metrics', 'marketplace_profile_sold_on'),
+        fetchAllDistinctValues('file_uploads', 'file_type'),
       ]);
 
       return {
-        programs: [...new Set(programs.data?.map(r => r.program_name).filter(Boolean) || [])] as string[],
-        masterPrograms: [...new Set(masterPrograms.data?.map(r => r.master_program_name).filter(Boolean) || [])] as string[],
-        categories: [...new Set(categories.data?.map(r => r.category_name).filter(Boolean) || [])] as string[],
-        facilities: [...new Set(facilities.data?.map(r => r.facility).filter(Boolean) || [])] as string[],
-        locations: [...new Set(locations.data?.map(r => r.location_id).filter(Boolean) || [])] as string[],
-        ownerships: [...new Set(ownerships.data?.map(r => r.tag_client_ownership).filter(Boolean) || [])] as string[],
-        clientSources: [...new Set(clientSources.data?.map(r => r.tag_clientsource).filter(Boolean) || [])] as string[],
-        marketplaces: [...new Set(marketplaces.data?.map(r => r.marketplace_profile_sold_on).filter(Boolean) || [])] as string[],
-        fileTypes: [...new Set(fileTypes.data?.map(r => r.file_type).filter(Boolean) || [])] as string[],
+        programs,
+        masterPrograms,
+        categories,
+        facilities,
+        locations,
+        ownerships,
+        clientSources,
+        marketplaces,
+        fileTypes,
       };
     },
     staleTime: 60000,
