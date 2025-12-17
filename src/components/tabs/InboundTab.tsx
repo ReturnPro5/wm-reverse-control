@@ -1,5 +1,5 @@
 import { KPICard } from '@/components/dashboard/KPICard';
-import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { LifecycleFunnel } from '@/components/dashboard/LifecycleFunnel';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
@@ -16,10 +16,12 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredLifecycle } from '@/hooks/useFilteredData';
-import { useFilters } from '@/contexts/FilterContext';
+import { useTabFilters } from '@/contexts/FilterContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getWMWeekNumber } from '@/lib/wmWeek';
+
+const TAB_NAME = 'inbound' as const;
 
 // Calculate WM week from a date string (YYYY-MM-DD)
 function getWMWeekFromDateString(dateStr: string | null): number | null {
@@ -32,8 +34,8 @@ function getWMWeekFromDateString(dateStr: string | null): number | null {
 export function InboundTab() {
   const queryClient = useQueryClient();
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
-  const { data: funnel, refetch: refetchFunnel } = useFilteredLifecycle();
-  const { filters } = useFilters();
+  const { data: funnel, refetch: refetchFunnel } = useFilteredLifecycle(TAB_NAME);
+  const { filters } = useTabFilters(TAB_NAME);
   
   // First get inbound file IDs
   const { data: inboundFileIds } = useQuery({
@@ -50,7 +52,7 @@ export function InboundTab() {
 
   // Fetch inbound metrics with proper week filtering and deduplication
   const { data: inboundMetrics, refetch: refetchData } = useQuery({
-    queryKey: ['inbound-metrics', filters.excludedFileIds, filters.wmWeeks, inboundFileIds],
+    queryKey: ['inbound-metrics', TAB_NAME, filters],
     queryFn: async () => {
       if (!inboundFileIds || inboundFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
@@ -59,19 +61,26 @@ export function InboundTab() {
       if (activeFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
       // Fetch all data in batches to avoid limit issues
-      type UnitRow = { trgid: string; received_on: string | null; checked_in_on: string | null };
+      type UnitRow = { trgid: string; received_on: string | null; checked_in_on: string | null; tag_clientsource: string | null };
       let allData: UnitRow[] = [];
       let offset = 0;
       const batchSize = 1000;
       
       while (true) {
-        const { data, error } = await supabase
+        let query = supabase
           .from('units_canonical')
-          .select('trgid, received_on, checked_in_on')
+          .select('trgid, received_on, checked_in_on, tag_clientsource')
           .not('received_on', 'is', null)
-          .in('file_upload_id', activeFileIds)
-          .range(offset, offset + batchSize - 1);
+          .in('file_upload_id', activeFileIds);
         
+        // Apply client source filter
+        if (filters.tagClientSources.length > 0) {
+          query = query.in('tag_clientsource', filters.tagClientSources);
+        }
+        
+        query = query.range(offset, offset + batchSize - 1);
+        
+        const { data, error } = await query;
         if (error) throw error;
         if (!data || data.length === 0) break;
         
@@ -164,8 +173,9 @@ export function InboundTab() {
         <p className="text-muted-foreground">Units received and checked in from Inbound files</p>
       </div>
 
-      {/* Global Filters */}
-      <GlobalFilterBar
+      {/* Tab-Specific Filters */}
+      <TabFilterBar
+        tabName={TAB_NAME}
         programs={options.programs}
         masterPrograms={options.masterPrograms}
         categories={options.categories}

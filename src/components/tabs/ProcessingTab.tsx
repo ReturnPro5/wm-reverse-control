@@ -1,5 +1,5 @@
 import { KPICard } from '@/components/dashboard/KPICard';
-import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { TestTube, Tag, Clock, Activity } from 'lucide-react';
@@ -15,14 +15,16 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions } from '@/hooks/useFilteredData';
-import { useFilters } from '@/contexts/FilterContext';
+import { useTabFilters } from '@/contexts/FilterContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+
+const TAB_NAME = 'processing' as const;
 
 export function ProcessingTab() {
   const queryClient = useQueryClient();
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
-  const { filters } = useFilters();
+  const { filters } = useTabFilters(TAB_NAME);
 
   // First get production file IDs
   const { data: productionFileIds } = useQuery({
@@ -40,7 +42,7 @@ export function ProcessingTab() {
 
   // Fetch units from Production files only
   const { data: productionUnits, refetch: refetchData } = useQuery({
-    queryKey: ['production-units', productionFileIds, filters],
+    queryKey: ['production-units', TAB_NAME, productionFileIds, filters],
     queryFn: async () => {
       if (!productionFileIds || productionFileIds.length === 0) return [];
       
@@ -55,6 +57,9 @@ export function ProcessingTab() {
       }
       if (filters.facilities.length > 0) {
         query = query.in('facility', filters.facilities);
+      }
+      if (filters.tagClientSources.length > 0) {
+        query = query.in('tag_clientsource', filters.tagClientSources);
       }
       
       const { data, error } = await query;
@@ -131,8 +136,9 @@ export function ProcessingTab() {
         <p className="text-muted-foreground">Testing and listing throughput from Production files</p>
       </div>
 
-      {/* Global Filters */}
-      <GlobalFilterBar
+      {/* Tab-Specific Filters */}
+      <TabFilterBar
+        tabName={TAB_NAME}
         programs={options.programs}
         masterPrograms={options.masterPrograms}
         categories={options.categories}

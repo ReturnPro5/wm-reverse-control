@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useFilters, GlobalFilters } from '@/contexts/FilterContext';
+import { useTabFilters, TabFilters, TabName } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
 import { getWMWeekNumber } from '@/lib/wmWeek';
 
@@ -16,7 +16,7 @@ function getWMWeekFromDateString(dateStr: string | null): number | null {
 // NOTE: This does NOT apply wmWeeks filter - that's handled per-date-field for lifecycle
 function applyFilters<T extends { eq: any; not: any; in: any }>(
   query: T,
-  filters: GlobalFilters,
+  filters: TabFilters,
   options: { skipWmWeeks?: boolean } = {},
 ): T {
   // Data filters - use .in() for arrays
@@ -62,8 +62,6 @@ function filterExcludedFiles<T extends { file_upload_id?: string | null }>(
 }
 
 export function useFilterOptions() {
-  const { filters } = useFilters();
-
   return useQuery({
     queryKey: ['filter-options-global'],
     queryFn: async () => {
@@ -105,11 +103,11 @@ export function useFilterOptions() {
   });
 }
 
-export function useFilteredLifecycle() {
-  const { filters } = useFilters();
+export function useFilteredLifecycle(tabName: TabName = 'inbound') {
+  const { filters } = useTabFilters(tabName);
 
   return useQuery({
-    queryKey: ['filtered-lifecycle-inbound-only', filters],
+    queryKey: ['filtered-lifecycle-inbound-only', tabName, filters],
     staleTime: 0,
     queryFn: async () => {
       // ALWAYS get only Inbound file IDs - lifecycle funnel is ONLY for Inbound files
@@ -134,6 +132,7 @@ export function useFilteredLifecycle() {
         first_listed_date: string | null; 
         order_closed_date: string | null; 
         file_upload_id: string | null;
+        tag_clientsource: string | null;
       };
       const unitsData: UnitRow[] = [];
       let offset = 0;
@@ -143,7 +142,7 @@ export function useFilteredLifecycle() {
         while (true) {
           let query = supabase
             .from('units_canonical')
-            .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, order_closed_date, file_upload_id')
+            .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, order_closed_date, file_upload_id, tag_clientsource')
             .in('file_upload_id', activeInboundFileIds);
           
           // Apply filters EXCEPT wmWeeks - we handle that per-stage-date
@@ -219,11 +218,11 @@ export function useFilteredLifecycle() {
   });
 }
 
-export function useFilteredSales() {
-  const { filters } = useFilters();
+export function useFilteredSales(tabName: TabName = 'sales') {
+  const { filters } = useTabFilters(tabName);
 
   return useQuery({
-    queryKey: ['filtered-sales', filters],
+    queryKey: ['filtered-sales', tabName, filters],
     queryFn: async () => {
       // Fetch all records using pagination to bypass 1000 row limit
       const allData: Tables<'sales_metrics'>[] = [];
@@ -253,11 +252,11 @@ export function useFilteredSales() {
   });
 }
 
-export function useFilteredFees() {
-  const { filters } = useFilters();
+export function useFilteredFees(tabName: TabName = 'sales') {
+  const { filters } = useTabFilters(tabName);
 
   return useQuery({
-    queryKey: ['filtered-fees', filters],
+    queryKey: ['filtered-fees', tabName, filters],
     queryFn: async () => {
       let query = supabase.from('fee_metrics').select('*');
       
@@ -279,11 +278,11 @@ export function useFilteredFees() {
   });
 }
 
-export function useFilteredLifecycleEvents() {
-  const { filters } = useFilters();
+export function useFilteredLifecycleEvents(tabName: TabName = 'inbound') {
+  const { filters } = useTabFilters(tabName);
 
   return useQuery({
-    queryKey: ['filtered-lifecycle-events', filters],
+    queryKey: ['filtered-lifecycle-events', tabName, filters],
     queryFn: async () => {
       let query = supabase.from('lifecycle_events').select('*');
       
@@ -302,11 +301,11 @@ export function useFilteredLifecycleEvents() {
   });
 }
 
-export function useFileUploads() {
-  const { filters } = useFilters();
+export function useFileUploads(tabName: TabName = 'inbound') {
+  const { filters } = useTabFilters(tabName);
 
   return useQuery({
-    queryKey: ['file-uploads-all', filters.fileTypes],
+    queryKey: ['file-uploads-all', tabName, filters.fileTypes],
     queryFn: async () => {
       let query = supabase
         .from('file_uploads')
@@ -324,11 +323,11 @@ export function useFileUploads() {
   });
 }
 
-export function useFilteredWeeklyTrends() {
-  const { filters } = useFilters();
+export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
+  const { filters } = useTabFilters(tabName);
 
   return useQuery({
-    queryKey: ['filtered-weekly-trends', filters],
+    queryKey: ['filtered-weekly-trends', tabName, filters],
     queryFn: async () => {
       // Fetch all records using pagination
       type TrendRow = { wm_week: number | null; gross_sale: number; effective_retail: number | null; file_upload_id: string | null };
