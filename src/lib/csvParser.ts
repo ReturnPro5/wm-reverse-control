@@ -31,6 +31,7 @@ export interface ParsedUnit {
   facility: string;
   locationId: string;
   tagClientOwnership: string;
+  tagClientSource: string;
   wmWeek: number | null;
   wmDayOfWeek: number | null;
   currentStage: 'Received' | 'CheckedIn' | 'Tested' | 'Listed' | 'Sold' | null;
@@ -193,6 +194,7 @@ export function parseCSV(content: string, fileName: string): { units: ParsedUnit
       facility: getValue('Tag_Facility'),
       locationId: getValue('LocationID'),
       tagClientOwnership: getValue('Tag_Ownership'),
+      tagClientSource: getValue('Tag_ClientSource') || getValue('ClientSource_Tag') || getValue('Tag_Client_Source'),
       wmWeek: orderClosedDate ? getWMWeekNumber(orderClosedDate) : null,
       wmDayOfWeek: orderClosedDate ? getWMDayOfWeek(orderClosedDate) : null,
       currentStage: null,

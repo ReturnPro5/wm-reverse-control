@@ -94,6 +94,7 @@ export function useFileUpload() {
           facility: unit.facility,
           location_id: unit.locationId,
           tag_client_ownership: unit.tagClientOwnership,
+          tag_clientsource: unit.tagClientSource || null,
           wm_week: unit.wmWeek,
           wm_day_of_week: unit.wmDayOfWeek,
         }));
@@ -157,6 +158,7 @@ export function useFileUpload() {
               category_name: unit.categoryName,
               marketplace_profile_sold_on: unit.marketplaceProfileSoldOn,
               facility: unit.facility,
+              tag_clientsource: unit.tagClientSource || null,
               wm_week: unit.wmWeek,
               wm_day_of_week: unit.wmDayOfWeek,
             }));
