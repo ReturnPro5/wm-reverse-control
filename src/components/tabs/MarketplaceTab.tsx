@@ -41,9 +41,9 @@ export function MarketplaceTab() {
     refetchData();
   };
 
-  // Filter to Walmart Marketplace sales only
+  // Filter to Walmart Marketplace sales only (exact match, excludes DSV)
   const marketplaceData = allSalesData?.filter(
-    sale => sale.marketplace_profile_sold_on?.toLowerCase().includes('walmart')
+    sale => sale.marketplace_profile_sold_on === 'Walmart Marketplace'
   ) || [];
 
   // Calculate metrics
