@@ -1,6 +1,6 @@
 import { KPICard } from '@/components/dashboard/KPICard';
 import { FeeBreakdown } from '@/components/dashboard/FeeBreakdown';
-import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { Truck, DollarSign, Package, Receipt } from 'lucide-react';
@@ -15,6 +15,8 @@ import {
 } from 'recharts';
 import { useFilterOptions, useFilteredFees } from '@/hooks/useFilteredData';
 
+const TAB_NAME = 'outbound' as const;
+
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
   if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
@@ -23,7 +25,7 @@ const formatCurrency = (value: number) => {
 
 export function OutboundTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
-  const { data: feeData, refetch: refetchData } = useFilteredFees();
+  const { data: feeData, refetch: refetchData } = useFilteredFees(TAB_NAME);
 
   const refetch = () => {
     refetchOptions();
@@ -71,8 +73,9 @@ export function OutboundTab() {
         <p className="text-muted-foreground">Fee tracking from Outbound files - never netted against sales</p>
       </div>
 
-      {/* Global Filters */}
-      <GlobalFilterBar
+      {/* Tab-Specific Filters */}
+      <TabFilterBar
+        tabName={TAB_NAME}
         programs={options.programs}
         masterPrograms={options.masterPrograms}
         categories={options.categories}

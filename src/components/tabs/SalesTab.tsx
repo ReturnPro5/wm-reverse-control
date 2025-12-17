@@ -1,5 +1,5 @@
 import { KPICard } from '@/components/dashboard/KPICard';
-import { GlobalFilterBar } from '@/components/dashboard/GlobalFilterBar';
+import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle } from 'lucide-react';
@@ -17,6 +17,8 @@ import {
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
 
+const TAB_NAME = 'sales' as const;
+
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
   if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
@@ -25,7 +27,7 @@ const formatCurrency = (value: number) => {
 
 export function SalesTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
-  const { data: salesData, refetch: refetchData } = useFilteredSales();
+  const { data: salesData, refetch: refetchData } = useFilteredSales(TAB_NAME);
 
   const refetch = () => {
     refetchOptions();
@@ -78,8 +80,9 @@ export function SalesTab() {
         <p className="text-muted-foreground">Gross sales metrics from Sales files only</p>
       </div>
 
-      {/* Global Filters */}
-      <GlobalFilterBar
+      {/* Tab-Specific Filters */}
+      <TabFilterBar
+        tabName={TAB_NAME}
         programs={options.programs}
         masterPrograms={options.masterPrograms}
         categories={options.categories}

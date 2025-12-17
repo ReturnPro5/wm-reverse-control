@@ -1,16 +1,16 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-export interface GlobalFilters {
+export interface TabFilters {
   // File-level filters
-  selectedFileIds: string[] | null; // null = all files, [] = none, [...ids] = specific
+  selectedFileIds: string[] | null;
   excludedFileIds: string[];
-  fileTypes: string[]; // Changed to array for multi-select
+  fileTypes: string[];
   fileBusinessDateStart: string | undefined;
   fileBusinessDateEnd: string | undefined;
   fileUploadDateStart: string | undefined;
   fileUploadDateEnd: string | undefined;
   
-  // Data-level filters (all arrays for multi-select)
+  // Data-level filters
   wmWeeks: number[];
   wmDaysOfWeek: number[];
   programNames: string[];
@@ -23,17 +23,21 @@ export interface GlobalFilters {
   marketplacesSoldOn: string[];
 }
 
+export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv';
+
 interface FilterContextType {
-  filters: GlobalFilters;
-  setFilter: <K extends keyof GlobalFilters>(key: K, value: GlobalFilters[K]) => void;
-  setFilters: (updates: Partial<GlobalFilters>) => void;
-  resetFilters: () => void;
+  getTabFilters: (tab: TabName) => TabFilters;
+  setTabFilter: <K extends keyof TabFilters>(tab: TabName, key: K, value: TabFilters[K]) => void;
+  setTabFilters: (tab: TabName, updates: Partial<TabFilters>) => void;
+  resetTabFilters: (tab: TabName) => void;
   excludeFile: (fileId: string) => void;
   includeFile: (fileId: string) => void;
   isFileExcluded: (fileId: string) => boolean;
+  // Global excluded files (persisted)
+  globalExcludedFileIds: string[];
 }
 
-const defaultFilters: GlobalFilters = {
+const defaultTabFilters: TabFilters = {
   selectedFileIds: null,
   excludedFileIds: [],
   fileTypes: [],
@@ -56,64 +60,112 @@ const defaultFilters: GlobalFilters = {
 const FilterContext = createContext<FilterContextType | undefined>(undefined);
 
 export function FilterProvider({ children }: { children: ReactNode }) {
-  const [filters, setFiltersState] = useState<GlobalFilters>(() => {
-    // Load excluded files from localStorage
+  // Global excluded files (persisted across all tabs)
+  const [globalExcludedFileIds, setGlobalExcludedFileIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('wm-excluded-files');
-    const excludedFileIds = saved ? JSON.parse(saved) : [];
-    return { ...defaultFilters, excludedFileIds };
+    return saved ? JSON.parse(saved) : [];
   });
 
-  const setFilter = useCallback(<K extends keyof GlobalFilters>(key: K, value: GlobalFilters[K]) => {
-    setFiltersState(prev => ({ ...prev, [key]: value }));
+  // Per-tab filters
+  const [tabFilters, setTabFiltersState] = useState<Record<TabName, TabFilters>>({
+    inbound: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    processing: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    sales: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    outbound: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    marketplace: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    dsv: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+  });
+
+  const getTabFilters = useCallback((tab: TabName): TabFilters => {
+    return { ...tabFilters[tab], excludedFileIds: globalExcludedFileIds };
+  }, [tabFilters, globalExcludedFileIds]);
+
+  const setTabFilter = useCallback(<K extends keyof TabFilters>(tab: TabName, key: K, value: TabFilters[K]) => {
+    setTabFiltersState(prev => ({
+      ...prev,
+      [tab]: { ...prev[tab], [key]: value },
+    }));
   }, []);
 
-  const setFilters = useCallback((updates: Partial<GlobalFilters>) => {
-    setFiltersState(prev => ({ ...prev, ...updates }));
+  const setTabFilters = useCallback((tab: TabName, updates: Partial<TabFilters>) => {
+    setTabFiltersState(prev => ({
+      ...prev,
+      [tab]: { ...prev[tab], ...updates },
+    }));
   }, []);
 
-  const resetFilters = useCallback(() => {
-    setFiltersState(prev => ({ ...defaultFilters, excludedFileIds: prev.excludedFileIds }));
-  }, []);
+  const resetTabFilters = useCallback((tab: TabName) => {
+    setTabFiltersState(prev => ({
+      ...prev,
+      [tab]: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    }));
+  }, [globalExcludedFileIds]);
 
   const excludeFile = useCallback((fileId: string) => {
-    setFiltersState(prev => {
-      const newExcluded = [...prev.excludedFileIds, fileId];
+    setGlobalExcludedFileIds(prev => {
+      const newExcluded = [...prev, fileId];
       localStorage.setItem('wm-excluded-files', JSON.stringify(newExcluded));
-      return { ...prev, excludedFileIds: newExcluded };
+      return newExcluded;
     });
   }, []);
 
   const includeFile = useCallback((fileId: string) => {
-    setFiltersState(prev => {
-      const newExcluded = prev.excludedFileIds.filter(id => id !== fileId);
+    setGlobalExcludedFileIds(prev => {
+      const newExcluded = prev.filter(id => id !== fileId);
       localStorage.setItem('wm-excluded-files', JSON.stringify(newExcluded));
-      return { ...prev, excludedFileIds: newExcluded };
+      return newExcluded;
     });
   }, []);
 
   const isFileExcluded = useCallback((fileId: string) => {
-    return filters.excludedFileIds.includes(fileId);
-  }, [filters.excludedFileIds]);
+    return globalExcludedFileIds.includes(fileId);
+  }, [globalExcludedFileIds]);
 
   return (
     <FilterContext.Provider value={{ 
-      filters, 
-      setFilter, 
-      setFilters, 
-      resetFilters,
+      getTabFilters,
+      setTabFilter,
+      setTabFilters,
+      resetTabFilters,
       excludeFile,
       includeFile,
       isFileExcluded,
+      globalExcludedFileIds,
     }}>
       {children}
     </FilterContext.Provider>
   );
 }
 
-export function useFilters() {
+export function useTabFilters(tab: TabName) {
   const context = useContext(FilterContext);
   if (!context) {
-    throw new Error('useFilters must be used within a FilterProvider');
+    throw new Error('useTabFilters must be used within a FilterProvider');
   }
-  return context;
+  
+  const filters = context.getTabFilters(tab);
+  const setFilter = <K extends keyof TabFilters>(key: K, value: TabFilters[K]) => {
+    context.setTabFilter(tab, key, value);
+  };
+  const setFilters = (updates: Partial<TabFilters>) => {
+    context.setTabFilters(tab, updates);
+  };
+  const resetFilters = () => {
+    context.resetTabFilters(tab);
+  };
+
+  return {
+    filters,
+    setFilter,
+    setFilters,
+    resetFilters,
+    excludeFile: context.excludeFile,
+    includeFile: context.includeFile,
+    isFileExcluded: context.isFileExcluded,
+  };
+}
+
+// Legacy hook for backwards compatibility - defaults to inbound
+export function useFilters() {
+  return useTabFilters('inbound');
 }
