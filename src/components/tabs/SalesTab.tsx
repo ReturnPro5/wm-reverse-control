@@ -41,23 +41,67 @@ export function SalesTab() {
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
 
-  // Group by date
+  // Group by date with marketplace breakdown
   const dailyData = salesData?.reduce((acc, sale) => {
     const date = sale.order_closed_date;
+    const marketplace = sale.marketplace_profile_sold_on || 'Unknown';
+    
     if (!acc[date]) {
-      acc[date] = { date, grossSales: 0, units: 0, effectiveRetail: 0 };
+      acc[date] = { date, grossSales: 0, units: 0, effectiveRetail: 0, marketplaces: {} as Record<string, number> };
     }
     acc[date].grossSales += Number(sale.gross_sale) || 0;
     acc[date].units++;
     acc[date].effectiveRetail += Number(sale.effective_retail) || 0;
+    
+    // Track marketplace sales
+    if (!acc[date].marketplaces[marketplace]) {
+      acc[date].marketplaces[marketplace] = 0;
+    }
+    acc[date].marketplaces[marketplace] += Number(sale.gross_sale) || 0;
+    
     return acc;
-  }, {} as Record<string, { date: string; grossSales: number; units: number; effectiveRetail: number }>);
+  }, {} as Record<string, { date: string; grossSales: number; units: number; effectiveRetail: number; marketplaces: Record<string, number> }>);
+
+  // Get all unique marketplaces across all dates
+  const allMarketplaces = new Set<string>();
+  Object.values(dailyData || {}).forEach(d => {
+    Object.keys(d.marketplaces).forEach(m => allMarketplaces.add(m));
+  });
+  const marketplaceList = Array.from(allMarketplaces).sort();
+
+  // Marketplace display name mapping
+  const getMarketplaceLabel = (m: string) => {
+    if (m === 'B2C Manual - WhatNot') return 'WhatNot';
+    if (m === 'Shopify VipOutlet') return 'VipOutlet';
+    return m;
+  };
+
+  // Marketplace colors
+  const marketplaceColors: Record<string, string> = {
+    'eBay': 'hsl(45, 93%, 47%)',
+    'Amazon': 'hsl(27, 98%, 54%)',
+    'B2C Manual - WhatNot': 'hsl(280, 87%, 65%)',
+    'Shopify VipOutlet': 'hsl(142, 76%, 36%)',
+    'Walmart': 'hsl(207, 90%, 54%)',
+  };
+  const getMarketplaceColor = (m: string, index: number) => {
+    return marketplaceColors[m] || `hsl(${(index * 60) % 360}, 70%, 50%)`;
+  };
 
   const chartData = Object.values(dailyData || {})
-    .map(d => ({
-      ...d,
-      recoveryRate: d.effectiveRetail > 0 ? (d.grossSales / d.effectiveRetail) * 100 : 0,
-    }))
+    .map(d => {
+      const result: Record<string, any> = {
+        date: d.date,
+        grossSales: d.grossSales,
+        recoveryRate: d.effectiveRetail > 0 ? (d.grossSales / d.effectiveRetail) * 100 : 0,
+      };
+      // Add each marketplace as its own field with percentage
+      marketplaceList.forEach(m => {
+        result[m] = d.marketplaces[m] || 0;
+        result[`${m}_pct`] = d.grossSales > 0 ? ((d.marketplaces[m] || 0) / d.grossSales) * 100 : 0;
+      });
+      return result;
+    })
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-14);
 
@@ -139,12 +183,12 @@ export function SalesTab() {
         </p>
       </div>
 
-      {/* Daily Sales Chart */}
+      {/* Daily Sales Chart with Marketplace Breakdown */}
       <div className="bg-card rounded-lg border p-6">
-        <h3 className="text-lg font-semibold mb-6">Daily Sales & Recovery</h3>
+        <h3 className="text-lg font-semibold mb-6">Daily Sales & Recovery by Marketplace</h3>
         
         {chartData.length > 0 ? (
-          <div className="h-[350px]">
+          <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -171,26 +215,33 @@ export function SalesTab() {
                     borderRadius: '8px',
                   }}
                   labelFormatter={(d) => format(new Date(d + 'T12:00:00'), 'MMMM d, yyyy')}
-                  formatter={(value: number, name: string) => {
-                    if (name === 'grossSales') return [formatCurrency(value), 'Gross Sales'];
+                  formatter={(value: number, name: string, props: any) => {
                     if (name === 'recoveryRate') return [`${value.toFixed(1)}%`, 'Recovery Rate'];
-                    return [value, name];
+                    // For marketplace bars, show value and percentage
+                    const pctKey = `${name}_pct`;
+                    const pct = props.payload[pctKey];
+                    const label = getMarketplaceLabel(name);
+                    return [`${formatCurrency(value)} (${pct?.toFixed(1) || 0}%)`, label];
                   }}
                 />
                 <Legend 
                   formatter={(value) => {
-                    if (value === 'grossSales') return 'Gross Sales';
                     if (value === 'recoveryRate') return 'Recovery Rate';
-                    return value;
+                    return getMarketplaceLabel(value);
                   }}
                 />
-                <Bar 
-                  yAxisId="left"
-                  dataKey="grossSales" 
-                  fill="hsl(var(--success))" 
-                  name="grossSales"
-                  radius={[4, 4, 0, 0]}
-                />
+                {/* Stacked bars for each marketplace */}
+                {marketplaceList.map((marketplace, index) => (
+                  <Bar 
+                    key={marketplace}
+                    yAxisId="left"
+                    dataKey={marketplace} 
+                    stackId="sales"
+                    fill={getMarketplaceColor(marketplace, index)} 
+                    name={marketplace}
+                    radius={index === marketplaceList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                  />
+                ))}
                 <Line 
                   yAxisId="right"
                   type="monotone" 
@@ -204,7 +255,7 @@ export function SalesTab() {
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+          <div className="h-[400px] flex items-center justify-center text-muted-foreground">
             No sales data available. Upload Sales files to see metrics.
           </div>
         )}

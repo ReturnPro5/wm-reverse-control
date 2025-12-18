@@ -39,10 +39,18 @@ export function TabFilterBar({
   const { filters, setFilter, resetFilters } = useTabFilters(tabName);
   const [isExpanded, setIsExpanded] = useState(false);
   const currentWeek = getWMWeekNumber(new Date());
-  const weekOptions = Array.from({ length: 52 }, (_, i) => ({
-    value: (i + 1).toString(),
-    label: `WK${(i + 1).toString().padStart(2, '0')}${i + 1 === currentWeek ? ' (Current)' : ''}`,
-  }));
+  // Week options: current week at top, descending order, with Select All
+  const weekOptions = [
+    { value: 'all', label: 'Select All' },
+    ...Array.from({ length: 52 }, (_, i) => {
+      const weekNum = currentWeek - i;
+      const adjustedWeek = weekNum <= 0 ? weekNum + 52 : weekNum;
+      return {
+        value: adjustedWeek.toString(),
+        label: `WK${adjustedWeek.toString().padStart(2, '0')}${adjustedWeek === currentWeek ? ' (Current)' : ''}`,
+      };
+    }),
+  ];
 
   const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
     if (key === 'excludedFileIds' || key === 'selectedFileIds') return false;
@@ -63,7 +71,15 @@ export function TabFilterBar({
         <MultiSelect
           options={weekOptions}
           selected={filters.wmWeeks.map(String)}
-          onChange={(values) => setFilter('wmWeeks', values.map(Number))}
+          onChange={(values) => {
+            // Handle "Select All" option
+            if (values.includes('all')) {
+              const allWeeks = Array.from({ length: 52 }, (_, i) => i + 1);
+              setFilter('wmWeeks', allWeeks);
+            } else {
+              setFilter('wmWeeks', values.map(Number));
+            }
+          }}
           placeholder="WM Week"
           className="w-[140px]"
         />
@@ -86,14 +102,7 @@ export function TabFilterBar({
           className="w-[140px]"
         />
 
-        {/* Client Source - WMUS/SAMS */}
-        <MultiSelect
-          options={clientSources.map(c => ({ value: c, label: c }))}
-          selected={filters.tagClientSources}
-          onChange={(values) => setFilter('tagClientSources', values)}
-          placeholder="Client Source"
-          className="w-[150px]"
-        />
+        {/* Client Source filter removed - WMUS exclusive report */}
 
         <div className="ml-auto flex items-center gap-2">
           <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
