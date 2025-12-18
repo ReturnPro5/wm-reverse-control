@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
+import { mapMarketplace, marketplaceColors, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 const TAB_NAME = 'sales' as const;
 
@@ -23,22 +24,6 @@ const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
   if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
   return `$${value.toFixed(0)}`;
-};
-
-// Marketplace mapping logic from Power BI
-const mapMarketplace = (marketplaceSoldOn: string | null): string => {
-  if (!marketplaceSoldOn || marketplaceSoldOn.trim() === '') return 'Manual Sales';
-  
-  const lower = marketplaceSoldOn.toLowerCase();
-  
-  if (lower.includes('dl')) return 'DirectLiquidation';
-  if (lower.includes('whatnot') || lower.includes('flashfindz')) return 'WhatNot';
-  if (lower.includes('shopify')) return 'VIPOutlet';
-  if (lower.includes('manual')) return 'Local Pickup';
-  if (lower.includes('daily deals')) return 'eBay';
-  
-  // Default: return original value
-  return marketplaceSoldOn;
 };
 
 export function SalesTab() {
@@ -60,7 +45,7 @@ export function SalesTab() {
   // Group by date with marketplace breakdown
   const dailyData = salesData?.reduce((acc, sale) => {
     const date = sale.order_closed_date;
-    const marketplace = mapMarketplace(sale.marketplace_profile_sold_on);
+    const marketplace = mapMarketplace(sale);
     
     if (!acc[date]) {
       acc[date] = { date, grossSales: 0, units: 0, effectiveRetail: 0, marketplaces: {} as Record<string, number> };
@@ -87,24 +72,7 @@ export function SalesTab() {
 
   // Marketplace display name mapping (for legend/tooltip)
   const getMarketplaceLabel = (m: string) => m;
-
-  // Marketplace colors
-  const marketplaceColors: Record<string, string> = {
-    'eBay': 'hsl(45, 93%, 47%)',
-    'eBay Auction': 'hsl(45, 80%, 35%)',
-    'DirectLiquidation': 'hsl(200, 70%, 50%)',
-    'WhatNot': 'hsl(280, 87%, 65%)',
-    'VIPOutlet': 'hsl(142, 76%, 36%)',
-    'Local Pickup': 'hsl(320, 70%, 50%)',
-    'Manual Sales': 'hsl(0, 0%, 50%)',
-    'Walmart Marketplace': 'hsl(207, 90%, 54%)',
-    'Walmart DSV': 'hsl(207, 70%, 40%)',
-    'Walmart In Store': 'hsl(207, 50%, 60%)',
-    'goWholesale': 'hsl(170, 70%, 45%)',
-  };
-  const getMarketplaceColor = (m: string, index: number) => {
-    return marketplaceColors[m] || `hsl(${(index * 60) % 360}, 70%, 50%)`;
-  };
+  const getColor = (marketplace: string, index: number) => getMarketplaceColor(marketplace, index);
 
   const chartData = Object.values(dailyData || {})
     .map(d => {
@@ -255,7 +223,7 @@ export function SalesTab() {
                     yAxisId="left"
                     dataKey={marketplace} 
                     stackId="sales"
-                    fill={getMarketplaceColor(marketplace, index)} 
+                    fill={getColor(marketplace, index)} 
                     name={marketplace}
                     radius={index === marketplaceList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                   />
