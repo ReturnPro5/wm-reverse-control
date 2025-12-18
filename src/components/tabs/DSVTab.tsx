@@ -11,7 +11,8 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  Legend
+  Legend,
+  LabelList
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
@@ -201,7 +202,20 @@ export function DSVTab() {
                   stroke="hsl(var(--primary))" 
                   strokeWidth={2}
                   dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2 }}
-                />
+                >
+                  <LabelList 
+                    dataKey="grossSales" 
+                    position="top" 
+                    formatter={(value: number) => {
+                      if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+                      if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+                      return `$${value.toFixed(0)}`;
+                    }}
+                    fill="hsl(var(--primary))"
+                    fontSize={10}
+                    fontWeight={500}
+                  />
+                </Line>
                 <Line 
                   yAxisId="right"
                   type="monotone" 
@@ -209,7 +223,17 @@ export function DSVTab() {
                   stroke="hsl(var(--success))" 
                   strokeWidth={2}
                   dot={{ fill: 'hsl(var(--success))', strokeWidth: 2 }}
-                />
+                >
+                  <LabelList 
+                    dataKey="recoveryRate" 
+                    position="top" 
+                    formatter={(value: number) => `${value.toFixed(0)}%`}
+                    fill="hsl(var(--success))"
+                    fontSize={10}
+                    fontWeight={500}
+                    offset={8}
+                  />
+                </Line>
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -255,7 +279,20 @@ export function DSVTab() {
                   fill="hsl(var(--info))" 
                   name="grossSales"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="grossSales" 
+                    position="top" 
+                    formatter={(value: number) => {
+                      if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+                      if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+                      return `$${value.toFixed(0)}`;
+                    }}
+                    fill="hsl(var(--foreground))"
+                    fontSize={11}
+                    fontWeight={600}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
