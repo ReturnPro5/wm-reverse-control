@@ -44,7 +44,7 @@ export function SalesTab() {
   // Group by date with marketplace breakdown
   const dailyData = salesData?.reduce((acc, sale) => {
     const date = sale.order_closed_date;
-    const marketplace = sale.marketplace_profile_sold_on || 'Unknown';
+    const marketplace = sale.marketplace_profile_sold_on || 'B2C Manual';
     
     if (!acc[date]) {
       acc[date] = { date, grossSales: 0, units: 0, effectiveRetail: 0, marketplaces: {} as Record<string, number> };
@@ -81,8 +81,12 @@ export function SalesTab() {
     'eBay': 'hsl(45, 93%, 47%)',
     'Amazon': 'hsl(27, 98%, 54%)',
     'B2C Manual - WhatNot': 'hsl(280, 87%, 65%)',
+    'B2C Manual': 'hsl(320, 70%, 50%)',
     'Shopify VipOutlet': 'hsl(142, 76%, 36%)',
-    'Walmart': 'hsl(207, 90%, 54%)',
+    'Walmart Marketplace': 'hsl(207, 90%, 54%)',
+    'Walmart DSV': 'hsl(207, 70%, 40%)',
+    'goWholesale': 'hsl(170, 70%, 45%)',
+    'DL2': 'hsl(30, 70%, 50%)',
   };
   const getMarketplaceColor = (m: string, index: number) => {
     return marketplaceColors[m] || `hsl(${(index * 60) % 360}, 70%, 50%)`;
