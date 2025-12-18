@@ -173,7 +173,8 @@ export function useFilteredLifecycle(tabName: TabName = 'inbound') {
           let query = supabase
             .from('units_canonical')
             .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, order_closed_date, file_upload_id, tag_clientsource')
-            .in('file_upload_id', activeInboundFileIds);
+            .in('file_upload_id', activeInboundFileIds)
+            .order('trgid', { ascending: true }); // Consistent ordering for pagination
           
           // Apply filters EXCEPT wmWeeks - we handle that per-stage-date
           query = applyFilters(query, filters, { skipWmWeeks: true });
