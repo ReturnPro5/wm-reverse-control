@@ -73,12 +73,8 @@ export function InboundTab() {
           .select('trgid, received_on, checked_in_on, tag_clientsource')
           .not('received_on', 'is', null)
           .in('file_upload_id', activeFileIds)
+          .eq('tag_clientsource', 'WMUS') // WMUS exclusive
           .order('trgid', { ascending: true }); // Consistent ordering
-        
-        // Apply client source filter
-        if (filters.tagClientSources.length > 0) {
-          query = query.in('tag_clientsource', filters.tagClientSources);
-        }
         
         query = query.range(offset, offset + batchSize - 1);
         
