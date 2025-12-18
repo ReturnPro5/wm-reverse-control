@@ -38,9 +38,8 @@ function applyFilters<T extends { eq: any; not: any; in: any }>(
   if (filters.tagClientOwnerships.length > 0) {
     query = query.in('tag_client_ownership', filters.tagClientOwnerships);
   }
-  if (filters.tagClientSources.length > 0) {
-    query = query.in('tag_clientsource', filters.tagClientSources);
-  }
+  // WMUS exclusive - always filter to WMUS only, ignore tagClientSources filter
+  query = query.eq('tag_clientsource', 'WMUS');
   if (filters.marketplacesSoldOn.length > 0) {
     query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
   }
