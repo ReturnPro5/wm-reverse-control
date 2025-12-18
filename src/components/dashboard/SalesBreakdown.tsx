@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { cn } from '@/lib/utils';
 import { useFilteredSales } from '@/hooks/useFilteredData';
+import { mapMarketplace, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 interface SalesBreakdownProps {
   className?: string;
@@ -21,28 +22,24 @@ const formatCurrency = (value: number) => {
   return `$${value.toFixed(0)}`;
 };
 
-const COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--info))',
-  'hsl(var(--success))',
-  'hsl(var(--warning))',
-  'hsl(var(--accent))',
-];
-
 export function SalesBreakdown({ className }: SalesBreakdownProps) {
   const { data: salesData } = useFilteredSales();
 
-  // Group sales by marketplace using global filters
+  // Group sales by mapped marketplace using global filters
   const marketplaceData = salesData?.reduce((grouped, row) => {
-    const marketplace = row.marketplace_profile_sold_on || 'Other';
+    const marketplace = mapMarketplace(row);
     grouped[marketplace] = (grouped[marketplace] || 0) + (Number(row.gross_sale) || 0);
     return grouped;
   }, {} as Record<string, number>);
 
   const chartData = Object.entries(marketplaceData || {})
-    .map(([name, value]) => ({ name: name.length > 15 ? name.slice(0, 15) + '...' : name, value }))
+    .map(([name, value]) => ({ name, fullName: name, value }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
+    .slice(0, 6)
+    .map(item => ({
+      ...item,
+      name: item.name.length > 15 ? item.name.slice(0, 15) + '...' : item.name
+    }));
 
   return (
     <div className={cn('bg-card rounded-lg border p-6', className)}>
@@ -73,8 +70,8 @@ export function SalesBreakdown({ className }: SalesBreakdownProps) {
                 formatter={(value: number) => [formatCurrency(value), 'Gross Sales']}
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                {chartData.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={getMarketplaceColor(entry.fullName, index)} />
                 ))}
               </Bar>
             </BarChart>

@@ -149,6 +149,7 @@ export type Database = {
       }
       sales_metrics: {
         Row: {
+          b2c_auction: string | null
           category_name: string | null
           created_at: string
           discount_amount: number | null
@@ -165,11 +166,13 @@ export type Database = {
           refund_amount: number | null
           sale_price: number
           tag_clientsource: string | null
+          tag_ebay_auction_sale: boolean | null
           trgid: string
           wm_day_of_week: number | null
           wm_week: number | null
         }
         Insert: {
+          b2c_auction?: string | null
           category_name?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -186,11 +189,13 @@ export type Database = {
           refund_amount?: number | null
           sale_price?: number
           tag_clientsource?: string | null
+          tag_ebay_auction_sale?: boolean | null
           trgid: string
           wm_day_of_week?: number | null
           wm_week?: number | null
         }
         Update: {
+          b2c_auction?: string | null
           category_name?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -207,6 +212,7 @@ export type Database = {
           refund_amount?: number | null
           sale_price?: number
           tag_clientsource?: string | null
+          tag_ebay_auction_sale?: boolean | null
           trgid?: string
           wm_day_of_week?: number | null
           wm_week?: number | null

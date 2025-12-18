@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
+import { mapMarketplace } from '@/lib/marketplaceMapping';
 
 const TAB_NAME = 'dsv' as const;
 
@@ -33,9 +34,9 @@ export function DSVTab() {
     refetchData();
   };
 
-  // Filter to Walmart DSV sales only (by marketplace)
+  // Filter to Walmart DSV sales only (using mapped marketplace)
   const dsvData = allSalesData?.filter(
-    sale => sale.marketplace_profile_sold_on === 'Walmart DSV'
+    sale => mapMarketplace(sale) === 'Walmart DSV'
   ) || [];
 
   // Calculate metrics
