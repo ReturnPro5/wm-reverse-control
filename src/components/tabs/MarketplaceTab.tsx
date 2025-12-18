@@ -2,7 +2,6 @@ import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { Store, DollarSign, Percent, Package } from 'lucide-react';
 import { 
-  BarChart, 
   Bar, 
   XAxis, 
   YAxis, 
@@ -12,7 +11,10 @@ import {
   PieChart,
   Pie,
   Cell,
-  LabelList
+  LabelList,
+  ComposedChart,
+  Line,
+  Legend
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
@@ -73,14 +75,19 @@ export function MarketplaceTab() {
   const dailyData = marketplaceData.reduce((acc, sale) => {
     const date = sale.order_closed_date;
     if (!acc[date]) {
-      acc[date] = { date, grossSales: 0, units: 0 };
+      acc[date] = { date, grossSales: 0, units: 0, effectiveRetail: 0 };
     }
     acc[date].grossSales += Number(sale.gross_sale) || 0;
+    acc[date].effectiveRetail += Number(sale.effective_retail) || 0;
     acc[date].units++;
     return acc;
-  }, {} as Record<string, { date: string; grossSales: number; units: number }>);
+  }, {} as Record<string, { date: string; grossSales: number; units: number; effectiveRetail: number }>);
 
   const dailyChartData = Object.values(dailyData)
+    .map(d => ({
+      ...d,
+      recoveryRate: d.effectiveRetail > 0 ? (d.grossSales / d.effectiveRetail) * 100 : 0,
+    }))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-14);
 
@@ -156,9 +163,9 @@ export function MarketplaceTab() {
           <h3 className="text-lg font-semibold mb-6">Daily Marketplace Sales</h3>
           
           {dailyChartData.length > 0 ? (
-            <div className="h-[280px]">
+            <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <ComposedChart data={dailyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis 
                     dataKey="date" 
@@ -166,7 +173,14 @@ export function MarketplaceTab() {
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                   />
                   <YAxis 
+                    yAxisId="left"
                     tickFormatter={formatCurrency}
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                  />
+                  <YAxis 
+                    yAxisId="right"
+                    orientation="right"
+                    tickFormatter={(v) => `${v.toFixed(0)}%`}
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                   />
                   <Tooltip 
@@ -178,10 +192,19 @@ export function MarketplaceTab() {
                     labelFormatter={(d) => format(new Date(d + 'T12:00:00'), 'MMMM d, yyyy')}
                     formatter={(value: number, name: string) => {
                       if (name === 'grossSales') return [formatCurrency(value), 'Gross Sales'];
+                      if (name === 'recoveryRate') return [`${value.toFixed(1)}%`, 'Recovery Rate'];
                       return [value, name];
                     }}
                   />
+                  <Legend 
+                    formatter={(value) => {
+                      if (value === 'grossSales') return 'Gross Sales';
+                      if (value === 'recoveryRate') return 'Recovery Rate';
+                      return value;
+                    }}
+                  />
                   <Bar 
+                    yAxisId="left"
                     dataKey="grossSales" 
                     fill="hsl(var(--primary))" 
                     name="grossSales"
@@ -200,11 +223,30 @@ export function MarketplaceTab() {
                       fontWeight={600}
                     />
                   </Bar>
-                </BarChart>
+                  <Line 
+                    yAxisId="right"
+                    type="monotone" 
+                    dataKey="recoveryRate" 
+                    stroke="hsl(var(--success))" 
+                    strokeWidth={2}
+                    dot={{ fill: 'hsl(var(--success))', strokeWidth: 2 }}
+                    name="recoveryRate"
+                  >
+                    <LabelList 
+                      dataKey="recoveryRate" 
+                      position="top" 
+                      formatter={(value: number) => `${value.toFixed(0)}%`}
+                      fill="hsl(var(--success))"
+                      fontSize={10}
+                      fontWeight={500}
+                      offset={8}
+                    />
+                  </Line>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[280px] flex items-center justify-center text-muted-foreground">
+            <div className="h-[320px] flex items-center justify-center text-muted-foreground">
               No Walmart Marketplace sales data
             </div>
           )}
