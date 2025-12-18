@@ -12,7 +12,8 @@ import {
   Legend,
   Line,
   ComposedChart,
-  Bar
+  Bar,
+  LabelList
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
@@ -226,7 +227,22 @@ export function SalesTab() {
                     fill={getColor(marketplace, index)} 
                     name={marketplace}
                     radius={index === marketplaceList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                  />
+                  >
+                    {index === marketplaceList.length - 1 && (
+                      <LabelList 
+                        dataKey="grossSales" 
+                        position="top" 
+                        formatter={(value: number) => {
+                          if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+                          if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+                          return `$${value.toFixed(0)}`;
+                        }}
+                        fill="hsl(var(--foreground))"
+                        fontSize={11}
+                        fontWeight={600}
+                      />
+                    )}
+                  </Bar>
                 ))}
                 <Line 
                   yAxisId="right"
@@ -236,7 +252,17 @@ export function SalesTab() {
                   strokeWidth={2}
                   dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2 }}
                   name="recoveryRate"
-                />
+                >
+                  <LabelList 
+                    dataKey="recoveryRate" 
+                    position="top" 
+                    formatter={(value: number) => `${value.toFixed(0)}%`}
+                    fill="hsl(var(--primary))"
+                    fontSize={10}
+                    fontWeight={500}
+                    offset={8}
+                  />
+                </Line>
               </ComposedChart>
             </ResponsiveContainer>
           </div>

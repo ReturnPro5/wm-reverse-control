@@ -11,7 +11,8 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  LabelList
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
@@ -185,7 +186,20 @@ export function MarketplaceTab() {
                     fill="hsl(var(--primary))" 
                     name="grossSales"
                     radius={[4, 4, 0, 0]}
-                  />
+                  >
+                    <LabelList 
+                      dataKey="grossSales" 
+                      position="top" 
+                      formatter={(value: number) => {
+                        if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+                        if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+                        return `$${value.toFixed(0)}`;
+                      }}
+                      fill="hsl(var(--foreground))"
+                      fontSize={11}
+                      fontWeight={600}
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
