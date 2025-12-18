@@ -49,7 +49,8 @@ export function ProcessingTab() {
       let query = supabase
         .from('units_canonical')
         .select('*')
-        .in('file_upload_id', productionFileIds);
+        .in('file_upload_id', productionFileIds)
+        .eq('tag_clientsource', 'WMUS'); // WMUS exclusive
       
       // Apply filters
       if (filters.programNames.length > 0) {
@@ -57,9 +58,6 @@ export function ProcessingTab() {
       }
       if (filters.facilities.length > 0) {
         query = query.in('facility', filters.facilities);
-      }
-      if (filters.tagClientSources.length > 0) {
-        query = query.in('tag_clientsource', filters.tagClientSources);
       }
       
       const { data, error } = await query;
