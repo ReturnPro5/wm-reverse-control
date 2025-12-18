@@ -299,6 +299,7 @@ export function useFilteredFees(tabName: TabName = 'sales') {
       if (filters.facilities.length > 0) {
         query = query.in('facility', filters.facilities);
       }
+      // Note: fee_metrics doesn't have tag_clientsource column, WMUS filter applied at data source level
       
       const { data, error } = await query;
       if (error) throw error;
@@ -368,8 +369,9 @@ export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
       while (true) {
         let query = supabase
           .from('sales_metrics')
-          .select('wm_week, gross_sale, effective_retail, file_upload_id')
-          .not('wm_week', 'is', null);
+          .select('wm_week, gross_sale, effective_retail, file_upload_id, tag_clientsource')
+          .not('wm_week', 'is', null)
+          .eq('tag_clientsource', 'WMUS'); // WMUS exclusive
         
         if (filters.programNames.length > 0) {
           query = query.in('program_name', filters.programNames);
