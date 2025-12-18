@@ -52,7 +52,8 @@ export function InboundTab() {
 
   // Fetch inbound metrics with proper week filtering and deduplication
   const { data: inboundMetrics, refetch: refetchData } = useQuery({
-    queryKey: ['inbound-metrics', TAB_NAME, filters],
+    queryKey: ['inbound-metrics', TAB_NAME, filters, inboundFileIds],
+    staleTime: 0, // Prevent stale data issues
     queryFn: async () => {
       if (!inboundFileIds || inboundFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
@@ -60,9 +61,9 @@ export function InboundTab() {
       const activeFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
       if (activeFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
-      // Fetch all data in batches to avoid limit issues
+      // Fetch all data in batches to avoid limit issues - add ordering for consistency
       type UnitRow = { trgid: string; received_on: string | null; checked_in_on: string | null; tag_clientsource: string | null };
-      let allData: UnitRow[] = [];
+      const allData: UnitRow[] = [];
       let offset = 0;
       const batchSize = 1000;
       
@@ -71,7 +72,8 @@ export function InboundTab() {
           .from('units_canonical')
           .select('trgid, received_on, checked_in_on, tag_clientsource')
           .not('received_on', 'is', null)
-          .in('file_upload_id', activeFileIds);
+          .in('file_upload_id', activeFileIds)
+          .order('trgid', { ascending: true }); // Consistent ordering
         
         // Apply client source filter
         if (filters.tagClientSources.length > 0) {
@@ -84,7 +86,7 @@ export function InboundTab() {
         if (error) throw error;
         if (!data || data.length === 0) break;
         
-        allData = [...allData, ...data];
+        allData.push(...data);
         if (data.length < batchSize) break;
         offset += batchSize;
       }
