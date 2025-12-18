@@ -25,6 +25,22 @@ const formatCurrency = (value: number) => {
   return `$${value.toFixed(0)}`;
 };
 
+// Marketplace mapping logic from Power BI
+const mapMarketplace = (marketplaceSoldOn: string | null): string => {
+  if (!marketplaceSoldOn || marketplaceSoldOn.trim() === '') return 'Manual Sales';
+  
+  const lower = marketplaceSoldOn.toLowerCase();
+  
+  if (lower.includes('dl')) return 'DirectLiquidation';
+  if (lower.includes('whatnot') || lower.includes('flashfindz')) return 'WhatNot';
+  if (lower.includes('shopify')) return 'VIPOutlet';
+  if (lower.includes('manual')) return 'Local Pickup';
+  if (lower.includes('daily deals')) return 'eBay';
+  
+  // Default: return original value
+  return marketplaceSoldOn;
+};
+
 export function SalesTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { data: salesData, refetch: refetchData } = useFilteredSales(TAB_NAME);
@@ -44,7 +60,7 @@ export function SalesTab() {
   // Group by date with marketplace breakdown
   const dailyData = salesData?.reduce((acc, sale) => {
     const date = sale.order_closed_date;
-    const marketplace = sale.marketplace_profile_sold_on || 'B2C Manual';
+    const marketplace = mapMarketplace(sale.marketplace_profile_sold_on);
     
     if (!acc[date]) {
       acc[date] = { date, grossSales: 0, units: 0, effectiveRetail: 0, marketplaces: {} as Record<string, number> };
@@ -69,24 +85,22 @@ export function SalesTab() {
   });
   const marketplaceList = Array.from(allMarketplaces).sort();
 
-  // Marketplace display name mapping
-  const getMarketplaceLabel = (m: string) => {
-    if (m === 'B2C Manual - WhatNot') return 'WhatNot';
-    if (m === 'Shopify VipOutlet') return 'VipOutlet';
-    return m;
-  };
+  // Marketplace display name mapping (for legend/tooltip)
+  const getMarketplaceLabel = (m: string) => m;
 
   // Marketplace colors
   const marketplaceColors: Record<string, string> = {
     'eBay': 'hsl(45, 93%, 47%)',
-    'Amazon': 'hsl(27, 98%, 54%)',
-    'B2C Manual - WhatNot': 'hsl(280, 87%, 65%)',
-    'B2C Manual': 'hsl(320, 70%, 50%)',
-    'Shopify VipOutlet': 'hsl(142, 76%, 36%)',
+    'eBay Auction': 'hsl(45, 80%, 35%)',
+    'DirectLiquidation': 'hsl(200, 70%, 50%)',
+    'WhatNot': 'hsl(280, 87%, 65%)',
+    'VIPOutlet': 'hsl(142, 76%, 36%)',
+    'Local Pickup': 'hsl(320, 70%, 50%)',
+    'Manual Sales': 'hsl(0, 0%, 50%)',
     'Walmart Marketplace': 'hsl(207, 90%, 54%)',
     'Walmart DSV': 'hsl(207, 70%, 40%)',
+    'Walmart In Store': 'hsl(207, 50%, 60%)',
     'goWholesale': 'hsl(170, 70%, 45%)',
-    'DL2': 'hsl(30, 70%, 50%)',
   };
   const getMarketplaceColor = (m: string, index: number) => {
     return marketplaceColors[m] || `hsl(${(index * 60) % 360}, 70%, 50%)`;
