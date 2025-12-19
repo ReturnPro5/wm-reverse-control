@@ -89,7 +89,8 @@ const parsePPS = (csv: string): PPSLookup => {
   return lookup;
 };
 
-// Parse Refurb Fee CSV: Category,Program(s),Key,BasePriceType,Price,...
+// Parse Refurb Fee CSV: Category,Program(s),Key,BasePriceType,Price,Pricing Condition,...
+// Key format: {Category}{Program}{PricingCondition}
 const parseRefurbFee = (csv: string): RefurbFeeLookup => {
   const lines = csv.split('\n').slice(1);
   const lookup: RefurbFeeLookup = {};
@@ -98,7 +99,7 @@ const parseRefurbFee = (csv: string): RefurbFeeLookup => {
     if (!line.trim()) continue;
     const fields = parseCSVLine(line);
     if (fields.length >= 5) {
-      const key = fields[2]; // Key column
+      const key = fields[2]; // Key column (includes condition)
       const priceType = fields[3]?.toLowerCase(); // BasePriceType
       const priceValue = parsePrice(fields[4]);
       
@@ -114,6 +115,7 @@ const parseRefurbFee = (csv: string): RefurbFeeLookup => {
 };
 
 // Parse % of Retail Refurb CSV: Category,Key,Program(s),Price
+// Key format: {Category}{Program}{PricingCondition}
 const parseRefurbPct = (csv: string): RefurbPctLookup => {
   const lines = csv.split('\n').slice(1);
   const lookup: RefurbPctLookup = {};
@@ -147,18 +149,31 @@ const initializeLookups = () => {
   refurbFeeLookup = parseRefurbFee(refurbFeeData);
   refurbPctLookup = parseRefurbPct(refurbPctData);
   initialized = true;
+  
+  console.log('Fee lookups initialized:', {
+    checkIn: Object.keys(checkInLookup).length,
+    pps: Object.keys(ppsLookup).length,
+    refurbFee: Object.keys(refurbFeeLookup).length,
+    refurbPct: Object.keys(refurbPctLookup).length
+  });
 };
 
-// Build lookup key from category and program
+// Build lookup key from category and program (for checkin and pps)
 const buildKey = (category: string | null, program: string | null): string => {
   const cat = category || '';
   const prog = program || '';
   return `${cat}${prog}`;
 };
 
+// Build lookup key with condition (for refurb)
+const buildRefurbKey = (category: string | null, program: string | null, condition: string | null): string => {
+  const cat = category || '';
+  const prog = program || '';
+  const cond = condition?.toUpperCase() || '';
+  return `${cat}${prog}${cond}`;
+};
+
 // Extract base program patterns for lookup matching
-// E.g., "BENAR-WM-RECLAIMS-OVERSTOCK" → tries "BENAR-WM", "BENAR-WM-RECLAIMS-OVERSTOCK"
-// "FORTX-TIJUANA-TVS" → tries "FORTX-WM", "FORTX-TIJUANA-TVS"
 const getProgramVariants = (program: string | null): string[] => {
   if (!program) return [''];
   const variants: string[] = [program];
@@ -181,11 +196,9 @@ const getProgramVariants = (program: string | null): string[] => {
   return [...new Set(variants)]; // Remove duplicates
 };
 
-// Legacy function for backward compatibility
-const getBaseProgram = (program: string | null): string => {
-  if (!program) return '';
-  const match = program.match(/^([A-Z]+-WM)/i);
-  return match ? match[1] : program;
+// Get all condition variants to try
+const getConditionVariants = (): string[] => {
+  return ['REFURBISHED', 'USED', 'NEW', 'BER', 'AS-IS'];
 };
 
 // Determine if a marketplace is B2C (vs B2B/wholesale)
@@ -298,6 +311,7 @@ export interface SaleRecord {
   marketplace_profile_sold_on: string | null;
   facility: string | null;
   effective_retail?: number | null;
+  mr_lmr_upc_average_category_retail?: number | null;
   tag_clientsource?: string | null;
 }
 
@@ -311,11 +325,14 @@ export interface CalculatedFees {
   totalFees: number;
 }
 
+// Debug: track lookup misses
+let debugSampleCount = 0;
+
 export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   initializeLookups();
   
   const salePrice = Number(sale.sale_price) || 0;
-  const effectiveRetail = Number(sale.effective_retail) || 0;
+  const effectiveRetail = Number(sale.effective_retail) || Number(sale.mr_lmr_upc_average_category_retail) || 0;
   const category = sale.category_name;
   const program = sale.program_name;
   const marketplace = sale.marketplace_profile_sold_on;
@@ -336,12 +353,24 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   
   // Build lookup keys - try multiple program variants
   const programVariants = getProgramVariants(program);
+  const conditionVariants = getConditionVariants();
   
   // Helper to find value in lookup with multiple key variants
   const findInLookup = <T>(lookup: Record<string, T>): T | undefined => {
     for (const prog of programVariants) {
       const key = buildKey(category, prog);
       if (lookup[key] !== undefined) return lookup[key];
+    }
+    return undefined;
+  };
+  
+  // Helper to find refurb value (needs condition)
+  const findRefurbInLookup = <T>(lookup: Record<string, T>): T | undefined => {
+    for (const prog of programVariants) {
+      for (const cond of conditionVariants) {
+        const key = buildRefurbKey(category, prog, cond);
+        if (lookup[key] !== undefined) return lookup[key];
+      }
     }
     return undefined;
   };
@@ -363,15 +392,15 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   // 3. Refurb Fee
   let refurbFee = 0;
   if (!isDropship) {
-    // Check fixed fee lookup first
-    const refurbFixed = findInLookup(refurbFeeLookup);
+    // Check fixed fee lookup first (with condition variants)
+    const refurbFixed = findRefurbInLookup(refurbFeeLookup);
     if (refurbFixed) {
       refurbFee = refurbFixed.type === 'percent' 
         ? (effectiveRetail * refurbFixed.value / 100)
         : refurbFixed.value;
     } else {
-      // Fall back to % of retail lookup
-      const refurbPct = findInLookup(refurbPctLookup);
+      // Fall back to % of retail lookup (with condition variants)
+      const refurbPct = findRefurbInLookup(refurbPctLookup);
       if (refurbPct && effectiveRetail > 0) {
         refurbFee = effectiveRetail * refurbPct;
       }
@@ -422,6 +451,7 @@ export const calculateTotalFees = (sales: SaleRecord[]): {
   };
   
   let totalFees = 0;
+  let missedLookups = { checkIn: 0, pps: 0, refurb: 0 };
   
   for (const sale of sales) {
     const fees = calculateFeesForSale(sale);
@@ -432,7 +462,19 @@ export const calculateTotalFees = (sales: SaleRecord[]): {
     breakdown.revshareFees += fees.revshareFee;
     breakdown.marketingFees += fees.marketingFee;
     totalFees += fees.totalFees;
+    
+    // Track misses
+    if (fees.checkInFee === 0 && sale.sale_price > 0) missedLookups.checkIn++;
+    if (fees.ppsFee === 0 && sale.sale_price > 0 && !sale.facility?.includes('DS')) missedLookups.pps++;
+    if (fees.refurbFee === 0 && sale.sale_price > 0 && !sale.facility?.includes('DS')) missedLookups.refurb++;
   }
+  
+  console.log('Fee calculation summary:', {
+    totalSales: sales.length,
+    totalFees,
+    breakdown,
+    missedLookups
+  });
   
   return { totalFees, breakdown };
 };
