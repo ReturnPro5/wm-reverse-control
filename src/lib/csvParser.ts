@@ -35,6 +35,25 @@ export interface ParsedUnit {
   wmWeek: number | null;
   wmDayOfWeek: number | null;
   currentStage: 'Received' | 'CheckedIn' | 'Tested' | 'Listed' | 'Sold' | null;
+  // Invoiced fee fields from sales files
+  invoicedCheckInFee: number | null;
+  invoicedRefurbFee: number | null;
+  invoicedOverboxFee: number | null;
+  invoicedPackagingFee: number | null;
+  invoicedPpsFee: number | null;
+  invoicedShippingFee: number | null;
+  invoicedMerchantFee: number | null;
+  invoiced3pmpFee: number | null;
+  invoicedRevshareFee: number | null;
+  invoicedMarketingFee: number | null;
+  invoicedRefundFee: number | null;
+  serviceInvoiceTotal: number | null;
+  vendorInvoiceTotal: number | null;
+  expectedHvAsIsRefurbFee: number | null;
+  // Additional sales fields
+  sortingIndex: string;
+  b2cAuction: string;
+  tagEbayAuctionSale: boolean;
 }
 
 function parseDate(value: string): Date | null {
@@ -65,6 +84,12 @@ function parseNumber(value: string): number | null {
   const cleaned = value.replace(/[,$]/g, '').trim();
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
+}
+
+function parseBoolean(value: string): boolean {
+  if (!value || value.trim() === '') return false;
+  const lower = value.toLowerCase().trim();
+  return lower === 'true' || lower === 'yes' || lower === '1';
 }
 
 function calculateEffectiveRetail(upcRetail: number | null, categoryAvg: number | null): number | null {
@@ -153,11 +178,37 @@ export function parseCSV(content: string, fileName: string): { units: ParsedUnit
     const salePrice = parseNumber(getValue('Sale Price (Discount applied)'));
     const refundAmount = parseNumber(getValue('RefundedSalePriceCalculated'));
     
+    // Calculated fees (from Outbound files)
     const checkInFee = parseNumber(getValue('CheckInFeeCalculated'));
     const packagingFee = parseNumber(getValue('PackagingFeeCalculated'));
     const pickPackShipFee = parseNumber(getValue('ServicePickPackShipFeeCalculated'));
     const refurbishingFee = parseNumber(getValue('ServiceRefurbishingFeeCalculated'));
     const marketplaceFee = parseNumber(getValue('ServiceThirdPartyMarketplaceFeeCalculated'));
+    
+    // Invoiced fees (from Sales files) - try multiple column name variants
+    const invoicedCheckInFee = parseNumber(getValue('Invoiced_CheckInFee')) ?? parseNumber(getValue('InvoicedCheckInFee')) ?? parseNumber(getValue('Invoiced Check In Fee'));
+    const invoicedRefurbFee = parseNumber(getValue('Invoiced_RefurbFee')) ?? parseNumber(getValue('InvoicedRefurbFee')) ?? parseNumber(getValue('Invoiced Refurb Fee'));
+    const invoicedOverboxFee = parseNumber(getValue('Invoiced_OverboxFee')) ?? parseNumber(getValue('InvoicedOverboxFee')) ?? parseNumber(getValue('Invoiced Overbox Fee'));
+    const invoicedPackagingFee = parseNumber(getValue('Invoiced_PackagingFee')) ?? parseNumber(getValue('InvoicedPackagingFee')) ?? parseNumber(getValue('Invoiced Packaging Fee'));
+    const invoicedPpsFee = parseNumber(getValue('Invoiced_PPSFee')) ?? parseNumber(getValue('InvoicedPPSFee')) ?? parseNumber(getValue('Invoiced PPS Fee'));
+    const invoicedShippingFee = parseNumber(getValue('Invoiced_ShippingFee')) ?? parseNumber(getValue('InvoicedShippingFee')) ?? parseNumber(getValue('Invoiced Shipping Fee'));
+    const invoicedMerchantFee = parseNumber(getValue('Invoiced_MerchantFee')) ?? parseNumber(getValue('InvoicedMerchantFee')) ?? parseNumber(getValue('Invoiced Merchant Fee'));
+    const invoiced3pmpFee = parseNumber(getValue('Invoiced_3PMPFee')) ?? parseNumber(getValue('Invoiced3PMPFee')) ?? parseNumber(getValue('Invoiced 3PMP Fee'));
+    const invoicedRevshareFee = parseNumber(getValue('Invoiced_RevshareFee')) ?? parseNumber(getValue('InvoicedRevshareFee')) ?? parseNumber(getValue('Invoiced Revshare Fee'));
+    const invoicedMarketingFee = parseNumber(getValue('Invoiced_MarketingFee')) ?? parseNumber(getValue('InvoicedMarketingFee')) ?? parseNumber(getValue('Invoiced Marketing Fee'));
+    const invoicedRefundFee = parseNumber(getValue('Invoiced_RefundFee')) ?? parseNumber(getValue('InvoicedRefundFee')) ?? parseNumber(getValue('Invoiced Refund Fee'));
+    
+    // Invoice totals
+    const serviceInvoiceTotal = parseNumber(getValue('ServiceInvoiceTotal')) ?? parseNumber(getValue('Service Invoice Total'));
+    const vendorInvoiceTotal = parseNumber(getValue('VendorInvoiceTotal')) ?? parseNumber(getValue('Vendor Invoice Total'));
+    
+    // Expected HV AS-IS refurb fee
+    const expectedHvAsIsRefurbFee = parseNumber(getValue('Expected_HV_AS_IS_RefurbFee')) ?? parseNumber(getValue('ExpectedHVASISRefurbFee')) ?? parseNumber(getValue('Expected HV AS-IS Refurb Fee'));
+    
+    // Sorting and auction fields
+    const sortingIndex = getValue('SortingIndex') || getValue('Sorting Index') || getValue('sorting_index') || '';
+    const b2cAuction = getValue('B2C_Auction') || getValue('B2CAuction') || getValue('B2C Auction') || '';
+    const tagEbayAuctionSale = parseBoolean(getValue('Tag_EbayAuctionSale') || getValue('TagEbayAuctionSale') || getValue('Tag Ebay Auction Sale'));
     
     const orderClosedDate = parseDate(getValue('OrderClosedDate'));
     
@@ -198,6 +249,25 @@ export function parseCSV(content: string, fileName: string): { units: ParsedUnit
       wmWeek: orderClosedDate ? getWMWeekNumber(orderClosedDate) : null,
       wmDayOfWeek: orderClosedDate ? getWMDayOfWeek(orderClosedDate) : null,
       currentStage: null,
+      // Invoiced fees
+      invoicedCheckInFee,
+      invoicedRefurbFee,
+      invoicedOverboxFee,
+      invoicedPackagingFee,
+      invoicedPpsFee,
+      invoicedShippingFee,
+      invoicedMerchantFee,
+      invoiced3pmpFee,
+      invoicedRevshareFee,
+      invoicedMarketingFee,
+      invoicedRefundFee,
+      serviceInvoiceTotal,
+      vendorInvoiceTotal,
+      expectedHvAsIsRefurbFee,
+      // Additional fields
+      sortingIndex,
+      b2cAuction,
+      tagEbayAuctionSale,
     };
     
     unit.currentStage = determineCurrentStage(unit);
