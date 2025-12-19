@@ -156,19 +156,19 @@ const initializeLookups = () => {
   });
 };
 
-// Build lookup key from category and program
-const buildKey = (category: string | null, program: string | null): string => {
-  const cat = category || '';
+// Build lookup key from program and category (DAX: ProgramName + CategoryName)
+const buildKey = (program: string | null, category: string | null): string => {
   const prog = program || '';
-  return `${cat}${prog}`;
+  const cat = category || '';
+  return `${prog}${cat}`;
 };
 
-// Build lookup key with condition (for refurb)
-const buildRefurbKey = (category: string | null, program: string | null, condition: string | null): string => {
-  const cat = category || '';
+// Build lookup key with condition (DAX: ProgramName + CategoryName + Tag_PricingCondition)
+const buildRefurbKey = (program: string | null, category: string | null, condition: string | null): string => {
   const prog = program || '';
+  const cat = category || '';
   const cond = condition?.toUpperCase() || '';
-  return `${cat}${prog}${cond}`;
+  return `${prog}${cat}${cond}`;
 };
 
 // Program variant generators for PPS lookup
@@ -208,11 +208,16 @@ const getProgramVariantsForRefurb = (program: string | null): string[] => {
 // Program variant generators for Check-In lookup
 const getProgramVariantsForCheckIn = (program: string | null): string[] => {
   if (!program) return [''];
+  const variants: string[] = [program];
   const upperProgram = program.toUpperCase();
-  if (upperProgram.includes('RECLAIMS-OVERSTOCK')) {
-    return [program];
+  
+  // Generate base WM variant (e.g., BENAR-WM from BENAR-WM-FORTWORTH)
+  const wmMatch = program.match(/^([A-Z]+-WM)/i);
+  if (wmMatch && wmMatch[1] !== program) {
+    variants.push(wmMatch[1]);
   }
-  return [];
+  
+  return [...new Set(variants)];
 };
 
 // Condition variants for refurb lookups
@@ -305,7 +310,7 @@ const calculateCheckInFee = (
   // 2. Use lookup-based calculation
   const variants = getProgramVariantsForCheckIn(program);
   for (const prog of variants) {
-    const key = buildKey(category, prog);
+    const key = buildKey(prog, category);
     if (checkInLookup[key] !== undefined) {
       return checkInLookup[key];
     }
@@ -353,7 +358,7 @@ const calculateRefurbFee = (
   // Try fixed fee lookup first
   for (const prog of variants) {
     for (const cond of conditions) {
-      const key = buildRefurbKey(category, prog, cond);
+      const key = buildRefurbKey(prog, category, cond);
       if (refurbFeeLookup[key] !== undefined) {
         const entry = refurbFeeLookup[key];
         return entry.type === 'percent' 
@@ -366,7 +371,7 @@ const calculateRefurbFee = (
   // Fall back to % of retail lookup
   for (const prog of variants) {
     for (const cond of conditions) {
-      const key = buildRefurbKey(category, prog, cond);
+      const key = buildRefurbKey(prog, category, cond);
       if (refurbPctLookup[key] !== undefined && effectiveRetail > 0) {
         return effectiveRetail * refurbPctLookup[key];
       }
@@ -422,7 +427,7 @@ const calculatePPSFee = (
   // 2. Use lookup-based calculation
   const variants = getProgramVariantsForPPS(program);
   for (const prog of variants) {
-    const key = buildKey(category, prog);
+    const key = buildKey(prog, category);
     if (ppsLookup[key] !== undefined) {
       return ppsLookup[key];
     }
