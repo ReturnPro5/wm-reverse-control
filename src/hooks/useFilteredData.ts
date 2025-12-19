@@ -280,12 +280,17 @@ export function useFilteredLifecycle(tabName: TabName = 'inbound') {
 
 export function useFilteredSales(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
+  
+  // Create a stable filter key that only changes when THIS tab's filters change
   const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
+    // Include tabName in queryKey to ensure complete isolation between tabs
     queryKey: ['filtered-sales', tabName, filterKey],
-    staleTime: 0, // Always refetch when filters change
+    staleTime: 30000, // Cache for 30 seconds
+    gcTime: 60000, // Keep in cache for 1 minute
     refetchOnWindowFocus: false,
+    refetchOnMount: false, // Don't refetch when component mounts if data exists
     queryFn: async () => {
       // Fetch all records using pagination to bypass 1000 row limit
       const allData: Tables<'sales_metrics'>[] = [];
@@ -310,14 +315,14 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         from += pageSize;
       }
       
-      console.log(`[useFilteredSales] Fetched ${allData.length} records for weeks:`, filters.wmWeeks.length > 0 ? filters.wmWeeks : 'ALL');
+      console.log(`[useFilteredSales:${tabName}] Fetched ${allData.length} records for weeks:`, filters.wmWeeks.length > 0 ? filters.wmWeeks : 'ALL');
       
       // Filter out excluded files and "owned" programs
       const filteredByFiles = filterExcludedFiles(allData, filters.excludedFileIds);
       const result = filterOwnedPrograms(filteredByFiles);
       
       const totalGross = result.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0);
-      console.log(`[useFilteredSales] After filters: ${result.length} records, $${(totalGross / 1000000).toFixed(2)}M gross`);
+      console.log(`[useFilteredSales:${tabName}] After filters: ${result.length} records, $${(totalGross / 1000000).toFixed(2)}M gross`);
       
       return result;
     },
