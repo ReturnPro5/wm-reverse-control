@@ -161,6 +161,25 @@ export function useFileUpload() {
               tag_clientsource: unit.tagClientSource || null,
               wm_week: unit.wmWeek,
               wm_day_of_week: unit.wmDayOfWeek,
+              // Invoiced fee fields
+              invoiced_check_in_fee: unit.invoicedCheckInFee,
+              invoiced_refurb_fee: unit.invoicedRefurbFee,
+              invoiced_overbox_fee: unit.invoicedOverboxFee,
+              invoiced_packaging_fee: unit.invoicedPackagingFee,
+              invoiced_pps_fee: unit.invoicedPpsFee,
+              invoiced_shipping_fee: unit.invoicedShippingFee,
+              invoiced_merchant_fee: unit.invoicedMerchantFee,
+              invoiced_3pmp_fee: unit.invoiced3pmpFee,
+              invoiced_revshare_fee: unit.invoicedRevshareFee,
+              invoiced_marketing_fee: unit.invoicedMarketingFee,
+              invoiced_refund_fee: unit.invoicedRefundFee,
+              service_invoice_total: unit.serviceInvoiceTotal,
+              vendor_invoice_total: unit.vendorInvoiceTotal,
+              expected_hv_as_is_refurb_fee: unit.expectedHvAsIsRefurbFee,
+              // Additional fields
+              sorting_index: unit.sortingIndex || null,
+              b2c_auction: unit.b2cAuction || null,
+              tag_ebay_auction_sale: unit.tagEbayAuctionSale,
             }));
 
           if (salesRecords.length > 0) {
