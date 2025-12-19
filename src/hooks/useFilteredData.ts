@@ -3,6 +3,25 @@ import { supabase } from '@/integrations/supabase/client';
 import { useTabFilters, TabFilters, TabName } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
 import { getWMWeekNumber } from '@/lib/wmWeek';
+import { useMemo } from 'react';
+
+// Create a stable filter key for React Query that only changes when filter values actually change
+function createFilterKey(filters: TabFilters) {
+  return JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    wmDaysOfWeek: filters.wmDaysOfWeek,
+    programNames: filters.programNames,
+    masterProgramNames: filters.masterProgramNames,
+    categoryNames: filters.categoryNames,
+    facilities: filters.facilities,
+    locationIds: filters.locationIds,
+    tagClientOwnerships: filters.tagClientOwnerships,
+    tagClientSources: filters.tagClientSources,
+    marketplacesSoldOn: filters.marketplacesSoldOn,
+    excludedFileIds: filters.excludedFileIds,
+    fileTypes: filters.fileTypes,
+  });
+}
 
 // Calculate WM week from a date string (YYYY-MM-DD)
 function getWMWeekFromDateString(dateStr: string | null): number | null {
@@ -144,9 +163,10 @@ export function useFilterOptions() {
 
 export function useFilteredLifecycle(tabName: TabName = 'inbound') {
   const { filters } = useTabFilters(tabName);
+  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
-    queryKey: ['filtered-lifecycle-inbound-only', tabName, filters],
+    queryKey: ['filtered-lifecycle-inbound-only', tabName, filterKey],
     staleTime: 0,
     queryFn: async () => {
       // ALWAYS get only Inbound file IDs - lifecycle funnel is ONLY for Inbound files
@@ -260,9 +280,10 @@ export function useFilteredLifecycle(tabName: TabName = 'inbound') {
 
 export function useFilteredSales(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
+  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
-    queryKey: ['filtered-sales', tabName, filters],
+    queryKey: ['filtered-sales', tabName, filterKey],
     staleTime: 0, // Always refetch when filters change
     refetchOnWindowFocus: false,
     queryFn: async () => {
@@ -305,9 +326,10 @@ export function useFilteredSales(tabName: TabName = 'sales') {
 
 export function useFilteredFees(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
+  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
-    queryKey: ['filtered-fees', tabName, filters],
+    queryKey: ['filtered-fees', tabName, filterKey],
     queryFn: async () => {
       let query = supabase.from('fee_metrics').select('*');
       
@@ -332,9 +354,10 @@ export function useFilteredFees(tabName: TabName = 'sales') {
 
 export function useFilteredLifecycleEvents(tabName: TabName = 'inbound') {
   const { filters } = useTabFilters(tabName);
+  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
-    queryKey: ['filtered-lifecycle-events', tabName, filters],
+    queryKey: ['filtered-lifecycle-events', tabName, filterKey],
     queryFn: async () => {
       let query = supabase.from('lifecycle_events').select('*');
       
@@ -377,9 +400,10 @@ export function useFileUploads(tabName: TabName = 'inbound') {
 
 export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
+  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
-    queryKey: ['filtered-weekly-trends', tabName, filters],
+    queryKey: ['filtered-weekly-trends', tabName, filterKey],
     queryFn: async () => {
       // Fetch all records using pagination
       type TrendRow = { wm_week: number | null; gross_sale: number; effective_retail: number | null; file_upload_id: string | null; master_program_name: string | null };
