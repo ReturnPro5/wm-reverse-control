@@ -60,6 +60,16 @@ function filterExcludedFiles<T extends { file_upload_id?: string | null }>(
   return data.filter(row => !row.file_upload_id || !excludedFileIds.includes(row.file_upload_id));
 }
 
+// Filter out "owned" programs from sales data (master_program_name contains "owned")
+function filterOwnedPrograms<T extends { master_program_name?: string | null }>(
+  data: T[]
+): T[] {
+  return data.filter(row => {
+    const masterProgram = row.master_program_name?.toLowerCase() || '';
+    return !masterProgram.includes('owned');
+  });
+}
+
 // Helper to fetch all distinct values from a column with pagination
 async function fetchAllDistinctValues(
   table: 'units_canonical' | 'sales_metrics' | 'file_uploads',
@@ -277,7 +287,9 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         from += pageSize;
       }
       
-      return filterExcludedFiles(allData, filters.excludedFileIds);
+      // Filter out excluded files and "owned" programs
+      const filteredByFiles = filterExcludedFiles(allData, filters.excludedFileIds);
+      return filterOwnedPrograms(filteredByFiles);
     },
   });
 }
@@ -361,7 +373,7 @@ export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
     queryKey: ['filtered-weekly-trends', tabName, filters],
     queryFn: async () => {
       // Fetch all records using pagination
-      type TrendRow = { wm_week: number | null; gross_sale: number; effective_retail: number | null; file_upload_id: string | null };
+      type TrendRow = { wm_week: number | null; gross_sale: number; effective_retail: number | null; file_upload_id: string | null; master_program_name: string | null };
       const allData: TrendRow[] = [];
       let from = 0;
       const pageSize = 1000;
@@ -369,7 +381,7 @@ export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
       while (true) {
         let query = supabase
           .from('sales_metrics')
-          .select('wm_week, gross_sale, effective_retail, file_upload_id, tag_clientsource')
+          .select('wm_week, gross_sale, effective_retail, file_upload_id, tag_clientsource, master_program_name')
           .not('wm_week', 'is', null)
           .eq('tag_clientsource', 'WMUS'); // WMUS exclusive
         
@@ -393,10 +405,12 @@ export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
       }
 
       const filtered = filterExcludedFiles(allData, filters.excludedFileIds);
+      // Also filter out "owned" programs for weekly trends
+      const filteredNoOwned = filterOwnedPrograms(filtered);
       
       const weeklyData: Record<number, { grossSales: number; effectiveRetail: number; count: number }> = {};
       
-      filtered.forEach(row => {
+      filteredNoOwned.forEach(row => {
         const week = row.wm_week!;
         if (!weeklyData[week]) {
           weeklyData[week] = { grossSales: 0, effectiveRetail: 0, count: 0 };
