@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 
 export interface TabFilters {
   // File-level filters
@@ -76,8 +76,28 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     dsv: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
   });
 
+  // Memoize per-tab filters to prevent unnecessary re-renders on other tabs
   const getTabFilters = useCallback((tab: TabName): TabFilters => {
-    return { ...tabFilters[tab], excludedFileIds: globalExcludedFileIds };
+    const tabFilter = tabFilters[tab];
+    return {
+      selectedFileIds: tabFilter.selectedFileIds,
+      excludedFileIds: globalExcludedFileIds,
+      fileTypes: tabFilter.fileTypes,
+      fileBusinessDateStart: tabFilter.fileBusinessDateStart,
+      fileBusinessDateEnd: tabFilter.fileBusinessDateEnd,
+      fileUploadDateStart: tabFilter.fileUploadDateStart,
+      fileUploadDateEnd: tabFilter.fileUploadDateEnd,
+      wmWeeks: tabFilter.wmWeeks,
+      wmDaysOfWeek: tabFilter.wmDaysOfWeek,
+      programNames: tabFilter.programNames,
+      masterProgramNames: tabFilter.masterProgramNames,
+      categoryNames: tabFilter.categoryNames,
+      facilities: tabFilter.facilities,
+      locationIds: tabFilter.locationIds,
+      tagClientOwnerships: tabFilter.tagClientOwnerships,
+      tagClientSources: tabFilter.tagClientSources,
+      marketplacesSoldOn: tabFilter.marketplacesSoldOn,
+    };
   }, [tabFilters, globalExcludedFileIds]);
 
   const setTabFilter = useCallback(<K extends keyof TabFilters>(tab: TabName, key: K, value: TabFilters[K]) => {
@@ -143,16 +163,20 @@ export function useTabFilters(tab: TabName) {
     throw new Error('useTabFilters must be used within a FilterProvider');
   }
   
-  const filters = context.getTabFilters(tab);
-  const setFilter = <K extends keyof TabFilters>(key: K, value: TabFilters[K]) => {
+  // Use useMemo to prevent unnecessary re-renders when other tabs' filters change
+  const filters = useMemo(() => context.getTabFilters(tab), [context, tab]);
+  
+  const setFilter = useCallback(<K extends keyof TabFilters>(key: K, value: TabFilters[K]) => {
     context.setTabFilter(tab, key, value);
-  };
-  const setFilters = (updates: Partial<TabFilters>) => {
+  }, [context, tab]);
+  
+  const setFilters = useCallback((updates: Partial<TabFilters>) => {
     context.setTabFilters(tab, updates);
-  };
-  const resetFilters = () => {
+  }, [context, tab]);
+  
+  const resetFilters = useCallback(() => {
     context.resetTabFilters(tab);
-  };
+  }, [context, tab]);
 
   return {
     filters,
