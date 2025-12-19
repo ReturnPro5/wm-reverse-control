@@ -470,79 +470,30 @@ const calculateShippingFee = (
   return 0;
 };
 
-// Calculate Revshare Fee - per DAX hierarchy
+// Calculate Revshare Fee - STRICT HIERARCHY: Invoiced only, no percentage defaults
 const calculateRevshareFee = (
-  invoicedValue: number | null | undefined,
-  salePrice: number,
-  program: string | null,
-  isB2C: boolean,
-  isSAMS: boolean,
-  isExcluded: boolean
+  invoicedValue: number | null | undefined
 ): number => {
   // 1. Use invoiced value if present
   if (invoicedValue != null && invoicedValue !== 0) {
     return Math.abs(invoicedValue);
   }
   
-  // Exclusions
-  if (!isB2C) return 0;
-  if (isSAMS) return 0;
-  if (isExcluded) return 0;
-  if (salePrice <= 0) return 0;
-  
-  const prog = (program || '').toLowerCase();
-  
-  // Reclaims, FC, Searcy = 4.5%
-  if (prog.includes('reclaim') || prog.includes('fc') || prog.includes('searcy')) {
-    return salePrice * 0.045;
-  }
-  
-  // Default B2C = 5%
-  return salePrice * 0.05;
+  // 2. No calculated fallback - no percentage defaults allowed
+  return 0;
 };
 
-// Calculate 3PMP Fee (third-party marketplace percentage) - per DAX hierarchy
+// Calculate 3PMP Fee - STRICT HIERARCHY: Invoiced only, no percentage defaults
 const calculate3PMPFee = (
-  invoicedValue: number | null | undefined,
-  salePrice: number,
-  marketplace: string | null,
-  category: string | null,
-  isB2C: boolean,
-  isSAMS: boolean,
-  isExcluded: boolean
+  invoicedValue: number | null | undefined
 ): number => {
   // 1. Use invoiced value if present
   if (invoicedValue != null && invoicedValue !== 0) {
     return Math.abs(invoicedValue);
   }
   
-  // Exclusions
-  if (!isB2C) return 0;
-  if (isSAMS) return 0;
-  if (isExcluded) return 0;
-  if (salePrice <= 0) return 0;
-  
-  const mp = (marketplace || '').toLowerCase();
-  const cat = (category || '').toLowerCase();
-  
-  // Platform-specific rates
-  if (mp.includes('whatnot') || mp.includes('flashfindz')) return salePrice * 0.17;
-  if (mp.includes('wish')) return salePrice * 0.20;
-  if (mp.includes('ebay')) {
-    return cat.includes('electronics') ? salePrice * 0.08 : salePrice * 0.12;
-  }
-  if (mp.includes('walmart') && mp.includes('marketplace')) {
-    return cat.includes('electronics') ? salePrice * 0.08 : salePrice * 0.12;
-  }
-  if (mp.includes('shopify') || mp.includes('vipoutlet')) {
-    return salePrice * 0.12;
-  }
-  if (mp.includes('amazon')) {
-    return cat.includes('electronics') ? salePrice * 0.08 : salePrice * 0.15;
-  }
-  
-  // Default B2C = 12%
-  return salePrice * 0.12;
+  // 2. No calculated fallback - no percentage defaults allowed
+  return 0;
 };
 
 // Calculate Merchant Fee - INVOICED ONLY, NO FALLBACK
@@ -556,24 +507,16 @@ const calculateMerchantFee = (
   return 0;
 };
 
-// Calculate Marketing Fee - per DAX hierarchy
+// Calculate Marketing Fee - STRICT HIERARCHY: Invoiced only, no percentage defaults
 const calculateMarketingFee = (
-  invoicedValue: number | null | undefined,
-  salePrice: number,
-  marketplace: string | null,
-  isB2C: boolean,
-  isExcluded: boolean
+  invoicedValue: number | null | undefined
 ): number => {
   // 1. Use invoiced value if present
   if (invoicedValue != null && invoicedValue !== 0) {
     return Math.abs(invoicedValue);
   }
   
-  if (!isB2C || isExcluded) return 0;
-  
-  // 2. Calculate based on rules
-  const mp = (marketplace || '').toLowerCase();
-  if (mp.includes('whatnot') || mp.includes('flashfindz')) return salePrice * 0.05;
+  // 2. No calculated fallback - no percentage defaults allowed
   return 0;
 };
 
@@ -698,32 +641,11 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   // Merchant fee is INVOICED ONLY - no calculated fallback
   const merchantFee = calculateMerchantFee(sale.invoiced_merchant_fee);
   
-  const revshareFee = calculateRevshareFee(
-    sale.invoiced_revshare_fee,
-    salePrice,
-    program,
-    isB2C,
-    isSAMS,
-    isExcluded
-  );
+  const revshareFee = calculateRevshareFee(sale.invoiced_revshare_fee);
   
-  const thirdPartyMPFee = calculate3PMPFee(
-    sale.invoiced_3pmp_fee,
-    salePrice,
-    marketplace,
-    category,
-    isB2C,
-    isSAMS,
-    isExcluded
-  );
+  const thirdPartyMPFee = calculate3PMPFee(sale.invoiced_3pmp_fee);
   
-  const marketingFee = calculateMarketingFee(
-    sale.invoiced_marketing_fee,
-    salePrice,
-    marketplace,
-    isB2C,
-    isExcluded
-  );
+  const marketingFee = calculateMarketingFee(sale.invoiced_marketing_fee);
   
   const refundFee = calculateRefundFee(sale.invoiced_refund_fee, sale.refund_amount);
   
