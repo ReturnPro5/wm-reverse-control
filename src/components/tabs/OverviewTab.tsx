@@ -16,6 +16,7 @@ import {
   useFileUploads,
   useFilteredWeeklyTrends
 } from '@/hooks/useFilteredData';
+import { calculateTotalFees } from '@/lib/feeCalculator';
 
 const formatCurrency = (value: number) => {
   if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -50,7 +51,20 @@ export function OverviewTab() {
   const avgSalePrice = unitsCount > 0 ? grossSales / unitsCount : 0;
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
 
-  // Calculate fee metrics
+  // Calculate fees using lookup tables (for Net Sales KPI)
+  const calculatedFees = salesData ? calculateTotalFees(salesData.map(s => ({
+    sale_price: Number(s.sale_price) || 0,
+    category_name: s.category_name,
+    program_name: s.program_name,
+    marketplace_profile_sold_on: s.marketplace_profile_sold_on,
+    facility: s.facility,
+    effective_retail: Number(s.effective_retail) || 0,
+    tag_clientsource: s.tag_clientsource
+  }))) : { totalFees: 0, breakdown: { checkInFees: 0, ppsFees: 0, refurbFees: 0, marketplaceFees: 0, revshareFees: 0, marketingFees: 0 } };
+  
+  const netSales = grossSales - calculatedFees.totalFees;
+
+  // Calculate fee metrics from database (for fee breakdown display)
   const totalFees = feeData?.reduce((sum, r) => sum + (Number(r.total_fees) || 0), 0) || 0;
   const feeMetrics = {
     totalFees,
@@ -100,8 +114,8 @@ export function OverviewTab() {
         />
         <KPICard
           title="Net Sales"
-          value={formatCurrency(grossSales - totalFees)}
-          subtitle="Gross Sales - Fees"
+          value={formatCurrency(netSales)}
+          subtitle="Gross - Calculated Fees"
           icon={<DollarSign className="h-5 w-5" />}
           variant="primary"
         />

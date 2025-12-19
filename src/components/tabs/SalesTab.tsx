@@ -18,6 +18,7 @@ import {
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales, useFilteredFees } from '@/hooks/useFilteredData';
 import { mapMarketplace, marketplaceColors, getMarketplaceColor } from '@/lib/marketplaceMapping';
+import { calculateTotalFees } from '@/lib/feeCalculator';
 
 const TAB_NAME = 'sales' as const;
 
@@ -44,8 +45,19 @@ export function SalesTab() {
   const unitsCount = salesData?.length || 0;
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
-  const totalFees = feeData?.reduce((sum, r) => sum + (Number(r.total_fees) || 0), 0) || 0;
-  const netSales = grossSales - totalFees;
+  
+  // Calculate fees using lookup tables (for Net Sales KPI)
+  const calculatedFees = salesData ? calculateTotalFees(salesData.map(s => ({
+    sale_price: Number(s.sale_price) || 0,
+    category_name: s.category_name,
+    program_name: s.program_name,
+    marketplace_profile_sold_on: s.marketplace_profile_sold_on,
+    facility: s.facility,
+    effective_retail: Number(s.effective_retail) || 0,
+    tag_clientsource: s.tag_clientsource
+  }))) : { totalFees: 0, breakdown: { checkInFees: 0, ppsFees: 0, refurbFees: 0, marketplaceFees: 0, revshareFees: 0, marketingFees: 0 } };
+  
+  const netSales = grossSales - calculatedFees.totalFees;
 
   // Group by date with marketplace breakdown
   const dailyData = salesData?.reduce((acc, sale) => {
@@ -142,7 +154,7 @@ export function SalesTab() {
         <KPICard
           title="Net Sales"
           value={formatCurrency(netSales)}
-          subtitle="Gross Sales - Fees"
+          subtitle="Gross - Calculated Fees"
           icon={<DollarSign className="h-5 w-5" />}
           variant="primary"
         />
