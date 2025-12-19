@@ -263,6 +263,8 @@ export function useFilteredSales(tabName: TabName = 'sales') {
 
   return useQuery({
     queryKey: ['filtered-sales', tabName, filters],
+    staleTime: 0, // Always refetch when filters change
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       // Fetch all records using pagination to bypass 1000 row limit
       const allData: Tables<'sales_metrics'>[] = [];
@@ -287,9 +289,16 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         from += pageSize;
       }
       
+      console.log(`[useFilteredSales] Fetched ${allData.length} records for weeks:`, filters.wmWeeks.length > 0 ? filters.wmWeeks : 'ALL');
+      
       // Filter out excluded files and "owned" programs
       const filteredByFiles = filterExcludedFiles(allData, filters.excludedFileIds);
-      return filterOwnedPrograms(filteredByFiles);
+      const result = filterOwnedPrograms(filteredByFiles);
+      
+      const totalGross = result.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0);
+      console.log(`[useFilteredSales] After filters: ${result.length} records, $${(totalGross / 1000000).toFixed(2)}M gross`);
+      
+      return result;
     },
   });
 }
