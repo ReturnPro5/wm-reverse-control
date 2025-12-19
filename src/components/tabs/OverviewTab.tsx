@@ -51,7 +51,7 @@ export function OverviewTab() {
   const avgSalePrice = unitsCount > 0 ? grossSales / unitsCount : 0;
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
 
-  // Calculate fees using lookup tables (for Net Sales KPI)
+  // Calculate fees using the new fee calculator (line-item based)
   const calculatedFees = salesData ? calculateTotalFees(salesData.map(s => ({
     sale_price: Number(s.sale_price) || 0,
     category_name: s.category_name,
@@ -59,20 +59,36 @@ export function OverviewTab() {
     marketplace_profile_sold_on: s.marketplace_profile_sold_on,
     facility: s.facility,
     effective_retail: Number(s.effective_retail) || 0,
-    tag_clientsource: s.tag_clientsource
-  }))) : { totalFees: 0, breakdown: { checkInFees: 0, ppsFees: 0, refurbFees: 0, marketplaceFees: 0, revshareFees: 0, marketingFees: 0 } };
+    tag_clientsource: s.tag_clientsource,
+    refund_amount: Number(s.refund_amount) || 0
+  }))) : { 
+    totalFees: 0, 
+    netDollars: 0,
+    breakdown: { 
+      checkInFees: 0, refurbFees: 0, overboxFees: 0, packagingFees: 0, 
+      ppsFees: 0, shippingFees: 0, merchantFees: 0, revshareFees: 0, 
+      thirdPartyMPFees: 0, marketingFees: 0, refundFees: 0 
+    } 
+  };
   
-  const netSales = grossSales - calculatedFees.totalFees;
+  // Net Dollars = Gross Sales - Total Fees (calculated per line item then aggregated)
+  const netSales = calculatedFees.netDollars;
 
-  // Calculate fee metrics from database (for fee breakdown display)
-  const totalFees = feeData?.reduce((sum, r) => sum + (Number(r.total_fees) || 0), 0) || 0;
+  // Build fee metrics for display using calculated fees (not database fees)
   const feeMetrics = {
-    totalFees,
-    checkInFees: feeData?.reduce((sum, r) => sum + (Number(r.check_in_fee) || 0), 0) || 0,
-    packagingFees: feeData?.reduce((sum, r) => sum + (Number(r.packaging_fee) || 0), 0) || 0,
-    pickPackShipFees: feeData?.reduce((sum, r) => sum + (Number(r.pick_pack_ship_fee) || 0), 0) || 0,
-    refurbishingFees: feeData?.reduce((sum, r) => sum + (Number(r.refurbishing_fee) || 0), 0) || 0,
-    marketplaceFees: feeData?.reduce((sum, r) => sum + (Number(r.marketplace_fee) || 0), 0) || 0,
+    totalFees: calculatedFees.totalFees,
+    netDollars: calculatedFees.netDollars,
+    checkInFees: calculatedFees.breakdown.checkInFees,
+    refurbFees: calculatedFees.breakdown.refurbFees,
+    overboxFees: calculatedFees.breakdown.overboxFees,
+    packagingFees: calculatedFees.breakdown.packagingFees,
+    ppsFees: calculatedFees.breakdown.ppsFees,
+    shippingFees: calculatedFees.breakdown.shippingFees,
+    merchantFees: calculatedFees.breakdown.merchantFees,
+    revshareFees: calculatedFees.breakdown.revshareFees,
+    thirdPartyMPFees: calculatedFees.breakdown.thirdPartyMPFees,
+    marketingFees: calculatedFees.breakdown.marketingFees,
+    refundFees: calculatedFees.breakdown.refundFees,
   };
 
   const options = filterOptions || {
@@ -135,7 +151,7 @@ export function OverviewTab() {
         />
         <KPICard
           title="Total Fees"
-          value={formatCurrency(totalFees)}
+          value={formatCurrency(feeMetrics.totalFees)}
           subtitle="Processing & marketplace"
           icon={<ReceiptText className="h-5 w-5" />}
           variant="warning"

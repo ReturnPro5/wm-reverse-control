@@ -27,11 +27,18 @@ export interface SalesMetrics {
 
 export interface FeeMetrics {
   totalFees: number;
+  netDollars: number;
   checkInFees: number;
+  refurbFees: number;
+  overboxFees: number;
   packagingFees: number;
-  pickPackShipFees: number;
-  refurbishingFees: number;
-  marketplaceFees: number;
+  ppsFees: number;
+  shippingFees: number;
+  merchantFees: number;
+  revshareFees: number;
+  thirdPartyMPFees: number;
+  marketingFees: number;
+  refundFees: number;
 }
 
 export function useDashboardData(filters: DashboardFilters = {}) {
@@ -150,20 +157,27 @@ export function useDashboardData(filters: DashboardFilters = {}) {
 
       const metrics: FeeMetrics = {
         totalFees: 0,
+        netDollars: 0,
         checkInFees: 0,
+        refurbFees: 0,
+        overboxFees: 0,
         packagingFees: 0,
-        pickPackShipFees: 0,
-        refurbishingFees: 0,
-        marketplaceFees: 0,
+        ppsFees: 0,
+        shippingFees: 0,
+        merchantFees: 0,
+        revshareFees: 0,
+        thirdPartyMPFees: 0,
+        marketingFees: 0,
+        refundFees: 0,
       };
 
       if (data && data.length > 0) {
         metrics.totalFees = data.reduce((sum, row) => sum + (Number(row.total_fees) || 0), 0);
         metrics.checkInFees = data.reduce((sum, row) => sum + (Number(row.check_in_fee) || 0), 0);
         metrics.packagingFees = data.reduce((sum, row) => sum + (Number(row.packaging_fee) || 0), 0);
-        metrics.pickPackShipFees = data.reduce((sum, row) => sum + (Number(row.pick_pack_ship_fee) || 0), 0);
-        metrics.refurbishingFees = data.reduce((sum, row) => sum + (Number(row.refurbishing_fee) || 0), 0);
-        metrics.marketplaceFees = data.reduce((sum, row) => sum + (Number(row.marketplace_fee) || 0), 0);
+        metrics.ppsFees = data.reduce((sum, row) => sum + (Number(row.pick_pack_ship_fee) || 0), 0);
+        metrics.refurbFees = data.reduce((sum, row) => sum + (Number(row.refurbishing_fee) || 0), 0);
+        metrics.merchantFees = data.reduce((sum, row) => sum + (Number(row.marketplace_fee) || 0), 0);
       }
 
       return metrics;
