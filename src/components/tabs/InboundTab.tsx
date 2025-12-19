@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { LifecycleFunnel } from '@/components/dashboard/LifecycleFunnel';
@@ -16,12 +17,22 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredLifecycle } from '@/hooks/useFilteredData';
-import { useTabFilters } from '@/contexts/FilterContext';
+import { useTabFilters, TabFilters } from '@/contexts/FilterContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getWMWeekNumber } from '@/lib/wmWeek';
 
 const TAB_NAME = 'inbound' as const;
+
+// Create a stable filter key for React Query
+function createFilterKey(filters: TabFilters) {
+  return JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    wmDaysOfWeek: filters.wmDaysOfWeek,
+    programNames: filters.programNames,
+    excludedFileIds: filters.excludedFileIds,
+  });
+}
 
 // Calculate WM week from a date string (YYYY-MM-DD)
 function getWMWeekFromDateString(dateStr: string | null): number | null {
@@ -36,6 +47,9 @@ export function InboundTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { data: funnel, refetch: refetchFunnel } = useFilteredLifecycle(TAB_NAME);
   const { filters } = useTabFilters(TAB_NAME);
+  
+  // Create stable filter key
+  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
   
   // First get inbound file IDs
   const { data: inboundFileIds } = useQuery({
@@ -52,7 +66,7 @@ export function InboundTab() {
 
   // Fetch inbound metrics with proper week filtering and deduplication
   const { data: inboundMetrics, refetch: refetchData } = useQuery({
-    queryKey: ['inbound-metrics', TAB_NAME, filters, inboundFileIds],
+    queryKey: ['inbound-metrics', TAB_NAME, filterKey, inboundFileIds],
     staleTime: 0, // Prevent stale data issues
     queryFn: async () => {
       if (!inboundFileIds || inboundFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };

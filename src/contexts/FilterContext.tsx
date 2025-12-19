@@ -141,17 +141,20 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     return globalExcludedFileIds.includes(fileId);
   }, [globalExcludedFileIds]);
 
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({ 
+    getTabFilters,
+    setTabFilter,
+    setTabFilters,
+    resetTabFilters,
+    excludeFile,
+    includeFile,
+    isFileExcluded,
+    globalExcludedFileIds,
+  }), [getTabFilters, setTabFilter, setTabFilters, resetTabFilters, excludeFile, includeFile, isFileExcluded, globalExcludedFileIds]);
+
   return (
-    <FilterContext.Provider value={{ 
-      getTabFilters,
-      setTabFilter,
-      setTabFilters,
-      resetTabFilters,
-      excludeFile,
-      includeFile,
-      isFileExcluded,
-      globalExcludedFileIds,
-    }}>
+    <FilterContext.Provider value={contextValue}>
       {children}
     </FilterContext.Provider>
   );
@@ -163,8 +166,8 @@ export function useTabFilters(tab: TabName) {
     throw new Error('useTabFilters must be used within a FilterProvider');
   }
   
-  // Use useMemo to prevent unnecessary re-renders when other tabs' filters change
-  const filters = useMemo(() => context.getTabFilters(tab), [context, tab]);
+  // Get the filters for this tab
+  const filters = context.getTabFilters(tab);
   
   const setFilter = useCallback(<K extends keyof TabFilters>(key: K, value: TabFilters[K]) => {
     context.setTabFilter(tab, key, value);
