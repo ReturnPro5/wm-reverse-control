@@ -4,7 +4,25 @@ import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { FeeComparisonTable } from '@/components/dashboard/FeeComparisonTable';
-import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, TableIcon } from 'lucide-react';
+import { 
+  DollarSign, 
+  Percent, 
+  Package, 
+  TrendingUp, 
+  AlertTriangle, 
+  TableIcon,
+  Receipt,
+  Truck,
+  Box,
+  Tag,
+  CreditCard,
+  Share2,
+  Store,
+  Megaphone,
+  RotateCcw,
+  CheckCircle,
+  Wrench
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { 
   XAxis, 
@@ -20,7 +38,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales, useFilteredFees } from '@/hooks/useFilteredData';
-import { mapMarketplace, marketplaceColors, getMarketplaceColor } from '@/lib/marketplaceMapping';
+import { mapMarketplace, getMarketplaceColor } from '@/lib/marketplaceMapping';
 import { calculateTotalFees } from '@/lib/feeCalculator';
 
 const TAB_NAME = 'sales' as const;
@@ -50,7 +68,7 @@ export function SalesTab() {
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
   
-  // Calculate fees using lookup tables (for Net Sales KPI)
+  // Calculate fees using the fee calculator
   const calculatedFees = salesData ? calculateTotalFees(salesData.map(s => ({
     sale_price: Number(s.sale_price) || 0,
     category_name: s.category_name,
@@ -58,8 +76,37 @@ export function SalesTab() {
     marketplace_profile_sold_on: s.marketplace_profile_sold_on,
     facility: s.facility,
     effective_retail: Number(s.effective_retail) || 0,
-    tag_clientsource: s.tag_clientsource
-  }))) : { totalFees: 0, breakdown: { checkInFees: 0, ppsFees: 0, refurbFees: 0, marketplaceFees: 0, revshareFees: 0, marketingFees: 0 } };
+    tag_clientsource: s.tag_clientsource,
+    b2c_auction: s.b2c_auction,
+    invoiced_3pmp_fee: s.invoiced_3pmp_fee,
+    invoiced_check_in_fee: s.invoiced_check_in_fee,
+    invoiced_refurb_fee: s.invoiced_refurb_fee,
+    invoiced_overbox_fee: s.invoiced_overbox_fee,
+    invoiced_packaging_fee: s.invoiced_packaging_fee,
+    invoiced_pps_fee: s.invoiced_pps_fee,
+    invoiced_shipping_fee: s.invoiced_shipping_fee,
+    invoiced_merchant_fee: s.invoiced_merchant_fee,
+    invoiced_revshare_fee: s.invoiced_revshare_fee,
+    invoiced_marketing_fee: s.invoiced_marketing_fee,
+    invoiced_refund_fee: s.invoiced_refund_fee,
+    refund_amount: s.refund_amount
+  }))) : { 
+    totalFees: 0, 
+    netDollars: 0,
+    breakdown: { 
+      checkInFees: 0, 
+      ppsFees: 0, 
+      refurbFees: 0, 
+      thirdPartyMPFees: 0,
+      revshareFees: 0, 
+      marketingFees: 0,
+      overboxFees: 0,
+      packagingFees: 0,
+      shippingFees: 0,
+      merchantFees: 0,
+      refundFees: 0
+    } 
+  };
   
   const netSales = grossSales - calculatedFees.totalFees;
 
@@ -75,7 +122,6 @@ export function SalesTab() {
     acc[date].units++;
     acc[date].effectiveRetail += Number(sale.effective_retail) || 0;
     
-    // Track marketplace sales
     if (!acc[date].marketplaces[marketplace]) {
       acc[date].marketplaces[marketplace] = 0;
     }
@@ -84,14 +130,12 @@ export function SalesTab() {
     return acc;
   }, {} as Record<string, { date: string; grossSales: number; units: number; effectiveRetail: number; marketplaces: Record<string, number> }>);
 
-  // Get all unique marketplaces across all dates
   const allMarketplaces = new Set<string>();
   Object.values(dailyData || {}).forEach(d => {
     Object.keys(d.marketplaces).forEach(m => allMarketplaces.add(m));
   });
   const marketplaceList = Array.from(allMarketplaces).sort();
 
-  // Marketplace display name mapping (for legend/tooltip)
   const getMarketplaceLabel = (m: string) => m;
   const getColor = (marketplace: string, index: number) => getMarketplaceColor(marketplace, index);
 
@@ -102,7 +146,6 @@ export function SalesTab() {
         grossSales: d.grossSales,
         recoveryRate: d.effectiveRetail > 0 ? (d.grossSales / d.effectiveRetail) * 100 : 0,
       };
-      // Add each marketplace as its own field with percentage
       marketplaceList.forEach(m => {
         result[m] = d.marketplaces[m] || 0;
         result[`${m}_pct`] = d.grossSales > 0 ? ((d.marketplaces[m] || 0) / d.grossSales) * 100 : 0;
@@ -124,6 +167,9 @@ export function SalesTab() {
     fileTypes: [],
   };
 
+  // Fee breakdown for display
+  const fees = calculatedFees.breakdown;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -140,7 +186,6 @@ export function SalesTab() {
         </Button>
       </div>
 
-      {/* Fee Comparison Table */}
       {showFeeComparison && (
         <div className="bg-card border rounded-lg p-6">
           <h3 className="text-lg font-semibold mb-4">Fee Comparison: Expected vs Calculated</h3>
@@ -148,7 +193,6 @@ export function SalesTab() {
         </div>
       )}
 
-      {/* Tab-Specific Filters */}
       <TabFilterBar
         tabName={TAB_NAME}
         programs={options.programs}
@@ -163,7 +207,7 @@ export function SalesTab() {
         onRefresh={refetch}
       />
 
-      {/* KPI Cards */}
+      {/* Primary KPI Cards */}
       <div className="grid gap-4 md:grid-cols-5">
         <KPICard
           title="Gross Sales"
@@ -194,15 +238,107 @@ export function SalesTab() {
           variant="default"
         />
         <KPICard
-          title="Avg Sale Price"
-          value={formatCurrency(unitsCount > 0 ? grossSales / unitsCount : 0)}
-          subtitle="Gross Sales / Units"
-          icon={<TrendingUp className="h-5 w-5" />}
-          variant="default"
+          title="Total Fees"
+          value={formatCurrency(calculatedFees.totalFees)}
+          subtitle="Sum of all fee components"
+          icon={<Receipt className="h-5 w-5" />}
+          variant="warning"
         />
       </div>
 
-      {/* Warning about Gross Sales */}
+      {/* Fee Breakdown KPI Cards - All 11 Fee Types */}
+      <div className="space-y-3">
+        <h3 className="text-lg font-semibold">Fee Breakdown by Type</h3>
+        <p className="text-sm text-muted-foreground">
+          Only 3P Marketplace Fee is active. All other fees will be 0 until verified correct.
+        </p>
+        
+        <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-6">
+          {/* 3P Marketplace Fee - ACTIVE */}
+          <KPICard
+            title="3P Marketplace"
+            value={formatCurrency(fees.thirdPartyMPFees)}
+            subtitle="WMUS only, Fee Bible rules"
+            icon={<Store className="h-4 w-4" />}
+            variant="primary"
+            className="ring-2 ring-primary/50"
+          />
+          
+          {/* Other fees - PENDING */}
+          <KPICard
+            title="Check-In"
+            value={formatCurrency(fees.checkInFees)}
+            subtitle="Pending implementation"
+            icon={<CheckCircle className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Refurb"
+            value={formatCurrency(fees.refurbFees)}
+            subtitle="Pending implementation"
+            icon={<Wrench className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Overbox"
+            value={formatCurrency(fees.overboxFees)}
+            subtitle="Pending implementation"
+            icon={<Box className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Packaging"
+            value={formatCurrency(fees.packagingFees)}
+            subtitle="Pending implementation"
+            icon={<Package className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="PPS"
+            value={formatCurrency(fees.ppsFees)}
+            subtitle="Pending implementation"
+            icon={<Truck className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Shipping"
+            value={formatCurrency(fees.shippingFees)}
+            subtitle="Pending implementation"
+            icon={<Truck className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Merchant"
+            value={formatCurrency(fees.merchantFees)}
+            subtitle="Pending implementation"
+            icon={<CreditCard className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Revshare"
+            value={formatCurrency(fees.revshareFees)}
+            subtitle="Pending implementation"
+            icon={<Share2 className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Marketing"
+            value={formatCurrency(fees.marketingFees)}
+            subtitle="Pending implementation"
+            icon={<Megaphone className="h-4 w-4" />}
+            variant="default"
+          />
+          <KPICard
+            title="Refund"
+            value={formatCurrency(fees.refundFees)}
+            subtitle="Pending implementation"
+            icon={<RotateCcw className="h-4 w-4" />}
+            variant="default"
+          />
+        </div>
+      </div>
+
+      {/* Gross Sales Integrity */}
       <div className="bg-success/10 border border-success/20 rounded-lg p-4">
         <h4 className="font-medium text-success flex items-center gap-2">
           <DollarSign className="h-4 w-4" />
@@ -214,7 +350,7 @@ export function SalesTab() {
         </p>
       </div>
 
-      {/* Daily Sales Chart with Marketplace Breakdown */}
+      {/* Daily Sales Chart */}
       <div className="bg-card rounded-lg border p-6">
         <h3 className="text-lg font-semibold mb-6">Daily Sales & Recovery by Marketplace</h3>
         
@@ -248,7 +384,6 @@ export function SalesTab() {
                   labelFormatter={(d) => format(new Date(d + 'T12:00:00'), 'MMMM d, yyyy')}
                   formatter={(value: number, name: string, props: any) => {
                     if (name === 'recoveryRate') return [`${value.toFixed(1)}%`, 'Recovery Rate'];
-                    // For marketplace bars, show value and percentage
                     const pctKey = `${name}_pct`;
                     const pct = props.payload[pctKey];
                     const label = getMarketplaceLabel(name);
@@ -261,7 +396,6 @@ export function SalesTab() {
                     return getMarketplaceLabel(value);
                   }}
                 />
-                {/* Stacked bars for each marketplace */}
                 {marketplaceList.map((marketplace, index) => (
                   <Bar 
                     key={marketplace}
@@ -331,10 +465,7 @@ export function SalesTab() {
         </div>
       )}
 
-      {/* File Manager */}
       <TabFileManager fileType="Sales" onFilesChanged={refetch} />
-
-      {/* Upload Section */}
       <FileUploadZone onUploadComplete={refetch} />
     </div>
   );
