@@ -52,16 +52,38 @@ export function OverviewTab() {
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
 
   // Calculate fees using the new fee calculator (line-item based)
-  const calculatedFees = salesData ? calculateTotalFees(salesData.map(s => ({
-    sale_price: Number(s.sale_price) || 0,
-    category_name: s.category_name,
-    program_name: s.program_name,
-    marketplace_profile_sold_on: s.marketplace_profile_sold_on,
-    facility: s.facility,
-    effective_retail: Number(s.effective_retail) || 0,
-    tag_clientsource: s.tag_clientsource,
-    refund_amount: Number(s.refund_amount) || 0
-  }))) : { 
+  // Map all fields including invoiced fee columns for hierarchy precedence
+  const calculatedFees = salesData ? calculateTotalFees(salesData.map(s => {
+    const sale = s as Record<string, unknown>;
+    return {
+      sale_price: Number(s.sale_price) || 0,
+      category_name: s.category_name,
+      program_name: s.program_name,
+      marketplace_profile_sold_on: s.marketplace_profile_sold_on,
+      facility: s.facility,
+      effective_retail: Number(s.effective_retail) || 0,
+      tag_clientsource: s.tag_clientsource,
+      refund_amount: Number(s.refund_amount) || 0,
+      discount_amount: Number(s.discount_amount) || 0,
+      // Vendor pallet/invoice fields
+      sorting_index: sale.sorting_index as string | null,
+      vendor_invoice_total: Number(sale.vendor_invoice_total) || null,
+      service_invoice_total: Number(sale.service_invoice_total) || null,
+      expected_hv_as_is_refurb_fee: Number(sale.expected_hv_as_is_refurb_fee) || null,
+      // Invoiced fee columns (hierarchy: invoiced > calculated > rule-based)
+      invoiced_check_in_fee: Number(sale.invoiced_check_in_fee) || null,
+      invoiced_refurb_fee: Number(sale.invoiced_refurb_fee) || null,
+      invoiced_overbox_fee: Number(sale.invoiced_overbox_fee) || null,
+      invoiced_packaging_fee: Number(sale.invoiced_packaging_fee) || null,
+      invoiced_pps_fee: Number(sale.invoiced_pps_fee) || null,
+      invoiced_shipping_fee: Number(sale.invoiced_shipping_fee) || null,
+      invoiced_merchant_fee: Number(sale.invoiced_merchant_fee) || null,
+      invoiced_revshare_fee: Number(sale.invoiced_revshare_fee) || null,
+      invoiced_3pmp_fee: Number(sale.invoiced_3pmp_fee) || null,
+      invoiced_marketing_fee: Number(sale.invoiced_marketing_fee) || null,
+      invoiced_refund_fee: Number(sale.invoiced_refund_fee) || null,
+    };
+  })) : { 
     totalFees: 0, 
     netDollars: 0,
     breakdown: { 

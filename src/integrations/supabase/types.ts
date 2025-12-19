@@ -154,10 +154,22 @@ export type Database = {
           created_at: string
           discount_amount: number | null
           effective_retail: number | null
+          expected_hv_as_is_refurb_fee: number | null
           facility: string | null
           file_upload_id: string | null
           gross_sale: number
           id: string
+          invoiced_3pmp_fee: number | null
+          invoiced_check_in_fee: number | null
+          invoiced_marketing_fee: number | null
+          invoiced_merchant_fee: number | null
+          invoiced_overbox_fee: number | null
+          invoiced_packaging_fee: number | null
+          invoiced_pps_fee: number | null
+          invoiced_refund_fee: number | null
+          invoiced_refurb_fee: number | null
+          invoiced_revshare_fee: number | null
+          invoiced_shipping_fee: number | null
           is_refunded: boolean | null
           marketplace_profile_sold_on: string | null
           master_program_name: string | null
@@ -165,9 +177,12 @@ export type Database = {
           program_name: string | null
           refund_amount: number | null
           sale_price: number
+          service_invoice_total: number | null
+          sorting_index: string | null
           tag_clientsource: string | null
           tag_ebay_auction_sale: boolean | null
           trgid: string
+          vendor_invoice_total: number | null
           wm_day_of_week: number | null
           wm_week: number | null
         }
@@ -177,10 +192,22 @@ export type Database = {
           created_at?: string
           discount_amount?: number | null
           effective_retail?: number | null
+          expected_hv_as_is_refurb_fee?: number | null
           facility?: string | null
           file_upload_id?: string | null
           gross_sale?: number
           id?: string
+          invoiced_3pmp_fee?: number | null
+          invoiced_check_in_fee?: number | null
+          invoiced_marketing_fee?: number | null
+          invoiced_merchant_fee?: number | null
+          invoiced_overbox_fee?: number | null
+          invoiced_packaging_fee?: number | null
+          invoiced_pps_fee?: number | null
+          invoiced_refund_fee?: number | null
+          invoiced_refurb_fee?: number | null
+          invoiced_revshare_fee?: number | null
+          invoiced_shipping_fee?: number | null
           is_refunded?: boolean | null
           marketplace_profile_sold_on?: string | null
           master_program_name?: string | null
@@ -188,9 +215,12 @@ export type Database = {
           program_name?: string | null
           refund_amount?: number | null
           sale_price?: number
+          service_invoice_total?: number | null
+          sorting_index?: string | null
           tag_clientsource?: string | null
           tag_ebay_auction_sale?: boolean | null
           trgid: string
+          vendor_invoice_total?: number | null
           wm_day_of_week?: number | null
           wm_week?: number | null
         }
@@ -200,10 +230,22 @@ export type Database = {
           created_at?: string
           discount_amount?: number | null
           effective_retail?: number | null
+          expected_hv_as_is_refurb_fee?: number | null
           facility?: string | null
           file_upload_id?: string | null
           gross_sale?: number
           id?: string
+          invoiced_3pmp_fee?: number | null
+          invoiced_check_in_fee?: number | null
+          invoiced_marketing_fee?: number | null
+          invoiced_merchant_fee?: number | null
+          invoiced_overbox_fee?: number | null
+          invoiced_packaging_fee?: number | null
+          invoiced_pps_fee?: number | null
+          invoiced_refund_fee?: number | null
+          invoiced_refurb_fee?: number | null
+          invoiced_revshare_fee?: number | null
+          invoiced_shipping_fee?: number | null
           is_refunded?: boolean | null
           marketplace_profile_sold_on?: string | null
           master_program_name?: string | null
@@ -211,9 +253,12 @@ export type Database = {
           program_name?: string | null
           refund_amount?: number | null
           sale_price?: number
+          service_invoice_total?: number | null
+          sorting_index?: string | null
           tag_clientsource?: string | null
           tag_ebay_auction_sale?: boolean | null
           trgid?: string
+          vendor_invoice_total?: number | null
           wm_day_of_week?: number | null
           wm_week?: number | null
         }
