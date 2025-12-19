@@ -156,12 +156,61 @@ const buildKey = (category: string | null, program: string | null): string => {
   return `${cat}${prog}`;
 };
 
-// Extract base program (e.g., "BENAR-WM" from "BENAR-WM-RECLAIMS-OVERSTOCK")
+// Extract base program patterns for lookup matching
+// E.g., "BENAR-WM-RECLAIMS-OVERSTOCK" → tries "BENAR-WM", "BENAR-WM-RECLAIMS-OVERSTOCK"
+// "FORTX-TIJUANA-TVS" → tries "FORTX-WM", "FORTX-TIJUANA-TVS"
+const getProgramVariants = (program: string | null): string[] => {
+  if (!program) return [''];
+  const variants: string[] = [program];
+  
+  // Extract facility code and try with -WM suffix
+  const facilityMatch = program.match(/^([A-Z]+)/i);
+  if (facilityMatch) {
+    const facility = facilityMatch[1];
+    variants.push(`${facility}-WM`);
+    variants.push(`${facility}-WM-RECLAIMS-OVERSTOCK`);
+    variants.push(`${facility}-WM-OVERSTOCK`);
+  }
+  
+  // Try extracting base -WM pattern
+  const wmMatch = program.match(/^([A-Z]+-WM)/i);
+  if (wmMatch) {
+    variants.push(wmMatch[1]);
+  }
+  
+  return [...new Set(variants)]; // Remove duplicates
+};
+
+// Legacy function for backward compatibility
 const getBaseProgram = (program: string | null): string => {
   if (!program) return '';
-  // Try common patterns
   const match = program.match(/^([A-Z]+-WM)/i);
   return match ? match[1] : program;
+};
+
+// Determine if a marketplace is B2C (vs B2B/wholesale)
+const isB2CMarketplace = (marketplace: string | null): boolean => {
+  if (!marketplace || marketplace.trim() === '') return false;
+  
+  const mp = marketplace.toLowerCase();
+  
+  // B2B/Wholesale channels - NO marketplace fee
+  if (mp.includes('dl') || mp.includes('directliquidation')) return false;
+  if (mp.includes('gowholesale') || mp.includes('wholesale')) return false;
+  if (mp.includes('manual') && !mp.includes('whatnot')) return false;
+  if (mp.includes('dsv')) return false;
+  if (mp.includes('in store')) return false;
+  
+  // B2C channels
+  if (mp.includes('ebay')) return true;
+  if (mp.includes('walmart') && mp.includes('marketplace')) return true;
+  if (mp.includes('whatnot') || mp.includes('flashfindz')) return true;
+  if (mp.includes('shopify') || mp.includes('vipoutlet')) return true;
+  if (mp.includes('wish')) return true;
+  if (mp.includes('amazon')) return true;
+  
+  // Default: assume NOT B2C for safety (avoid over-charging fees)
+  return false;
 };
 
 // Calculate 3P Marketplace Fee based on DAX logic (excluding SAMS)
@@ -170,16 +219,19 @@ const calculate3PMarketplaceFee = (
   marketplace: string | null,
   category: string | null
 ): number => {
-  if (!marketplace || salePrice <= 0) return 0;
+  if (salePrice <= 0) return 0;
   
-  const mp = marketplace.toLowerCase();
+  // Only apply to B2C marketplaces
+  if (!isB2CMarketplace(marketplace)) return 0;
+  
+  const mp = (marketplace || '').toLowerCase();
   const cat = (category || '').toLowerCase();
   
-  // DSV or in-store = 0
+  // DSV or in-store = 0 (already handled by isB2CMarketplace but explicit)
   if (mp.includes('dsv') || mp.includes('in store')) return 0;
   
   // WhatNot = 17%
-  if (mp.includes('whatnot')) return salePrice * 0.17;
+  if (mp.includes('whatnot') || mp.includes('flashfindz')) return salePrice * 0.17;
   
   // Wish = 20%
   if (mp.includes('wish')) return salePrice * 0.20;
@@ -194,11 +246,17 @@ const calculate3PMarketplaceFee = (
     return cat.includes('electronics') ? salePrice * 0.08 : salePrice * 0.12;
   }
   
+  // Shopify/VIPOutlet - 12%
+  if (mp.includes('shopify') || mp.includes('vipoutlet')) {
+    return salePrice * 0.12;
+  }
+  
   // Default B2C = 12%
   return salePrice * 0.12;
 };
 
 // Calculate Revshare Fee (excluding SAMS)
+// Note: Revshare applies to all sales EXCEPT DSV
 const calculateRevshareFee = (
   salePrice: number,
   program: string | null,
@@ -209,7 +267,7 @@ const calculateRevshareFee = (
   const mp = (marketplace || '').toLowerCase();
   const prog = (program || '').toLowerCase();
   
-  // DSV = 0
+  // DSV = 0 (explicitly excluded in DAX)
   if (mp.includes('dsv')) return 0;
   
   // Reclaims, FC, Searcy = 4.5%
@@ -227,8 +285,8 @@ const calculateMarketingFee = (
   marketplace: string | null
 ): number => {
   const mp = (marketplace || '').toLowerCase();
-  // WhatNot = 5%
-  if (mp.includes('whatnot')) return salePrice * 0.05;
+  // WhatNot/FlashFindz = 5%
+  if (mp.includes('whatnot') || mp.includes('flashfindz')) return salePrice * 0.05;
   return 0;
 };
 
@@ -276,43 +334,48 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
     };
   }
   
-  // Build lookup keys
-  const baseProgram = getBaseProgram(program);
-  const fullKey = buildKey(category, program);
-  const baseKey = buildKey(category, baseProgram);
+  // Build lookup keys - try multiple program variants
+  const programVariants = getProgramVariants(program);
+  
+  // Helper to find value in lookup with multiple key variants
+  const findInLookup = <T>(lookup: Record<string, T>): T | undefined => {
+    for (const prog of programVariants) {
+      const key = buildKey(category, prog);
+      if (lookup[key] !== undefined) return lookup[key];
+    }
+    return undefined;
+  };
   
   // 1. Check-In Fee
-  let checkInFee = checkInLookup[fullKey] || checkInLookup[baseKey] || 0;
+  let checkInFee = findInLookup(checkInLookup) || 0;
   // Default if no lookup found and program contains "boxes"
   if (checkInFee === 0 && program?.toLowerCase().includes('boxes')) {
     checkInFee = 1.3;
   }
   
-  // 2. PPS Fee (0 if DS facility)
+  // 2. PPS Fee (0 if DS facility or dropship program)
   let ppsFee = 0;
-  if (!facility?.toUpperCase().includes('DS')) {
-    ppsFee = ppsLookup[fullKey] || ppsLookup[baseKey] || 0;
+  const isDropship = facility?.toUpperCase().includes('DS') || program?.toUpperCase().startsWith('DS-');
+  if (!isDropship) {
+    ppsFee = findInLookup(ppsLookup) || 0;
   }
   
   // 3. Refurb Fee
   let refurbFee = 0;
-  // Check fixed fee lookup first
-  const refurbFixed = refurbFeeLookup[fullKey] || refurbFeeLookup[baseKey];
-  if (refurbFixed) {
-    refurbFee = refurbFixed.type === 'percent' 
-      ? (effectiveRetail * refurbFixed.value / 100)
-      : refurbFixed.value;
-  } else {
-    // Fall back to % of retail lookup
-    const refurbPct = refurbPctLookup[fullKey] || refurbPctLookup[baseKey];
-    if (refurbPct && effectiveRetail > 0) {
-      refurbFee = effectiveRetail * refurbPct;
+  if (!isDropship) {
+    // Check fixed fee lookup first
+    const refurbFixed = findInLookup(refurbFeeLookup);
+    if (refurbFixed) {
+      refurbFee = refurbFixed.type === 'percent' 
+        ? (effectiveRetail * refurbFixed.value / 100)
+        : refurbFixed.value;
+    } else {
+      // Fall back to % of retail lookup
+      const refurbPct = findInLookup(refurbPctLookup);
+      if (refurbPct && effectiveRetail > 0) {
+        refurbFee = effectiveRetail * refurbPct;
+      }
     }
-  }
-  
-  // Skip refurb for DS facility
-  if (facility?.toUpperCase().includes('DS')) {
-    refurbFee = 0;
   }
   
   // 4. 3P Marketplace Fee
