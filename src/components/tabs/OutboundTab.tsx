@@ -32,14 +32,21 @@ export function OutboundTab() {
     refetchData();
   };
 
-  // Calculate aggregated metrics
+  // Calculate aggregated metrics with all 11 fee components
   const metrics = {
     totalFees: feeData?.reduce((sum, r) => sum + (Number(r.total_fees) || 0), 0) || 0,
+    netDollars: 0,
     checkInFees: feeData?.reduce((sum, r) => sum + (Number(r.check_in_fee) || 0), 0) || 0,
+    refurbFees: feeData?.reduce((sum, r) => sum + (Number(r.refurbishing_fee) || 0), 0) || 0,
+    overboxFees: 0,
     packagingFees: feeData?.reduce((sum, r) => sum + (Number(r.packaging_fee) || 0), 0) || 0,
-    pickPackShipFees: feeData?.reduce((sum, r) => sum + (Number(r.pick_pack_ship_fee) || 0), 0) || 0,
-    refurbishingFees: feeData?.reduce((sum, r) => sum + (Number(r.refurbishing_fee) || 0), 0) || 0,
-    marketplaceFees: feeData?.reduce((sum, r) => sum + (Number(r.marketplace_fee) || 0), 0) || 0,
+    ppsFees: feeData?.reduce((sum, r) => sum + (Number(r.pick_pack_ship_fee) || 0), 0) || 0,
+    shippingFees: 0,
+    merchantFees: feeData?.reduce((sum, r) => sum + (Number(r.marketplace_fee) || 0), 0) || 0,
+    revshareFees: 0,
+    thirdPartyMPFees: feeData?.reduce((sum, r) => sum + (Number(r.marketplace_fee) || 0), 0) || 0,
+    marketingFees: 0,
+    refundFees: 0,
   };
 
   const unitsWithFees = feeData?.length || 0;
@@ -49,9 +56,9 @@ export function OutboundTab() {
   const feeBreakdownData = [
     { name: 'Check-In', value: metrics.checkInFees },
     { name: 'Packaging', value: metrics.packagingFees },
-    { name: 'Pick/Pack/Ship', value: metrics.pickPackShipFees },
-    { name: 'Refurbishing', value: metrics.refurbishingFees },
-    { name: 'Marketplace', value: metrics.marketplaceFees },
+    { name: 'PPS', value: metrics.ppsFees },
+    { name: 'Refurb', value: metrics.refurbFees },
+    { name: '3PMP', value: metrics.thirdPartyMPFees },
   ].filter(d => d.value > 0);
 
   const options = filterOptions || {
@@ -113,7 +120,7 @@ export function OutboundTab() {
         />
         <KPICard
           title="Marketplace Fees"
-          value={formatCurrency(metrics.marketplaceFees)}
+          value={formatCurrency(metrics.thirdPartyMPFees)}
           subtitle="3rd party marketplace costs"
           icon={<Truck className="h-5 w-5" />}
           variant="primary"
@@ -189,9 +196,9 @@ export function OutboundTab() {
               {[
                 { name: 'Check-In Fee', value: metrics.checkInFees },
                 { name: 'Packaging Fee', value: metrics.packagingFees },
-                { name: 'Pick/Pack/Ship Fee', value: metrics.pickPackShipFees },
-                { name: 'Refurbishing Fee', value: metrics.refurbishingFees },
-                { name: 'Marketplace Fee', value: metrics.marketplaceFees },
+                { name: 'PPS Fee', value: metrics.ppsFees },
+                { name: 'Refurb Fee', value: metrics.refurbFees },
+                { name: '3PMP Fee', value: metrics.thirdPartyMPFees },
               ].map(fee => (
                 <tr key={fee.name} className="border-b last:border-0">
                   <td className="py-3 px-4">{fee.name}</td>

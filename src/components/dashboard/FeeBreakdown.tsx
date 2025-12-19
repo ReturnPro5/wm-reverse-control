@@ -13,9 +13,13 @@ const COLORS = [
   'hsl(var(--success))',
   'hsl(var(--warning))',
   'hsl(var(--accent))',
+  'hsl(var(--destructive))',
+  'hsl(var(--secondary))',
+  'hsl(var(--muted-foreground))',
 ];
 
 const formatCurrency = (value: number) => {
+  if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
   if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
   return `$${value.toFixed(0)}`;
 };
@@ -32,12 +36,18 @@ export function FeeBreakdown({ data, className }: FeeBreakdownProps) {
     );
   }
 
+  // All 11 fee components (excluding merchantFees to avoid double-counting with thirdPartyMPFees)
   const chartData = [
     { name: 'Check-In', value: data.checkInFees },
+    { name: 'Refurb', value: data.refurbFees },
+    { name: 'Overbox', value: data.overboxFees },
     { name: 'Packaging', value: data.packagingFees },
-    { name: 'Pick/Pack/Ship', value: data.pickPackShipFees },
-    { name: 'Refurbishing', value: data.refurbishingFees },
-    { name: 'Marketplace', value: data.marketplaceFees },
+    { name: 'PPS', value: data.ppsFees },
+    { name: 'Shipping', value: data.shippingFees },
+    { name: '3PMP', value: data.thirdPartyMPFees },
+    { name: 'Revshare', value: data.revshareFees },
+    { name: 'Marketing', value: data.marketingFees },
+    { name: 'Refund', value: data.refundFees },
   ].filter(item => item.value > 0);
 
   return (
