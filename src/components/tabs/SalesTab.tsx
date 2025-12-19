@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
-import { DollarSign, Percent, Package, TrendingUp, AlertTriangle } from 'lucide-react';
+import { FeeComparisonTable } from '@/components/dashboard/FeeComparisonTable';
+import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, TableIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { 
   XAxis, 
   YAxis, 
@@ -29,6 +32,7 @@ const formatCurrency = (value: number) => {
 };
 
 export function SalesTab() {
+  const [showFeeComparison, setShowFeeComparison] = useState(false);
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { data: salesData, refetch: refetchData } = useFilteredSales(TAB_NAME);
   const { data: feeData, refetch: refetchFees } = useFilteredFees(TAB_NAME);
@@ -122,10 +126,27 @@ export function SalesTab() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Sales Performance</h2>
-        <p className="text-muted-foreground">Gross sales metrics from Sales files only</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Sales Performance</h2>
+          <p className="text-muted-foreground">Gross sales metrics from Sales files only</p>
+        </div>
+        <Button
+          variant={showFeeComparison ? "default" : "outline"}
+          onClick={() => setShowFeeComparison(!showFeeComparison)}
+        >
+          <TableIcon className="h-4 w-4 mr-2" />
+          {showFeeComparison ? 'Hide' : 'Show'} Fee Comparison
+        </Button>
       </div>
+
+      {/* Fee Comparison Table */}
+      {showFeeComparison && (
+        <div className="bg-card border rounded-lg p-6">
+          <h3 className="text-lg font-semibold mb-4">Fee Comparison: Expected vs Calculated</h3>
+          <FeeComparisonTable />
+        </div>
+      )}
 
       {/* Tab-Specific Filters */}
       <TabFilterBar
