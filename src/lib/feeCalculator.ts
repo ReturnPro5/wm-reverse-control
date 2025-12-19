@@ -1,548 +1,10 @@
-// Fee lookup tables parsed from CSV data
-// These are imported statically to avoid async loading issues
-
-import checkinData from '@/data/checkin.csv?raw';
-import ppsData from '@/data/pps.csv?raw';
-import refurbFeeData from '@/data/refurb_fee.csv?raw';
-import refurbPctData from '@/data/of_retail_ref.csv?raw';
-
-// Types
-interface CheckInLookup {
-  [key: string]: number;
-}
-
-interface PPSLookup {
-  [key: string]: number;
-}
-
-interface RefurbFeeLookup {
-  [key: string]: { type: 'dollar' | 'percent'; value: number };
-}
-
-interface RefurbPctLookup {
-  [key: string]: number; // percentage as decimal
-}
-
-// Parse helper to handle CSV price values
-const parsePrice = (value: string): number => {
-  const cleaned = value.replace(/[$,%]/g, '').trim();
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-};
-
-// Parse CSV line respecting quoted fields
-const parseCSVLine = (line: string): string[] => {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result;
-};
-
-// Parse Check-In CSV: Category,Program,BasePriceType,Key,Price
-const parseCheckIn = (csv: string): CheckInLookup => {
-  const lines = csv.split('\n').slice(1);
-  const lookup: CheckInLookup = {};
-  
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const fields = parseCSVLine(line);
-    if (fields.length >= 5) {
-      const key = fields[3];
-      const price = parsePrice(fields[4]);
-      if (key && price > 0) {
-        lookup[key] = price;
-      }
-    }
-  }
-  return lookup;
-};
-
-// Parse PPS CSV: Category,Program(s),key,BasePriceType,Price
-const parsePPS = (csv: string): PPSLookup => {
-  const lines = csv.split('\n').slice(1);
-  const lookup: PPSLookup = {};
-  
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const fields = parseCSVLine(line);
-    if (fields.length >= 5) {
-      const key = fields[2];
-      const price = parsePrice(fields[4]);
-      if (key && price > 0) {
-        lookup[key] = price;
-      }
-    }
-  }
-  return lookup;
-};
-
-// Parse Refurb Fee CSV: Category,Program(s),Key,BasePriceType,Price,Pricing Condition,...
-const parseRefurbFee = (csv: string): RefurbFeeLookup => {
-  const lines = csv.split('\n').slice(1);
-  const lookup: RefurbFeeLookup = {};
-  
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const fields = parseCSVLine(line);
-    if (fields.length >= 5) {
-      const key = fields[2];
-      const priceType = fields[3]?.toLowerCase();
-      const priceValue = parsePrice(fields[4]);
-      
-      if (key && priceValue > 0) {
-        lookup[key] = {
-          type: priceType === 'percent' ? 'percent' : 'dollar',
-          value: priceValue
-        };
-      }
-    }
-  }
-  return lookup;
-};
-
-// Parse % of Retail Refurb CSV: Category,Key,Program(s),Price
-const parseRefurbPct = (csv: string): RefurbPctLookup => {
-  const lines = csv.split('\n').slice(1);
-  const lookup: RefurbPctLookup = {};
-  
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const fields = parseCSVLine(line);
-    if (fields.length >= 4) {
-      const key = fields[1];
-      const pct = parsePrice(fields[3]);
-      if (key && pct > 0) {
-        lookup[key] = pct / 100;
-      }
-    }
-  }
-  return lookup;
-};
-
-// Initialize lookups
-let checkInLookup: CheckInLookup = {};
-let ppsLookup: PPSLookup = {};
-let refurbFeeLookup: RefurbFeeLookup = {};
-let refurbPctLookup: RefurbPctLookup = {};
-let initialized = false;
-
-const initializeLookups = () => {
-  if (initialized) return;
-  
-  checkInLookup = parseCheckIn(checkinData);
-  ppsLookup = parsePPS(ppsData);
-  refurbFeeLookup = parseRefurbFee(refurbFeeData);
-  refurbPctLookup = parseRefurbPct(refurbPctData);
-  initialized = true;
-  
-  console.log('Fee lookups initialized:', {
-    checkIn: Object.keys(checkInLookup).length,
-    pps: Object.keys(ppsLookup).length,
-    refurbFee: Object.keys(refurbFeeLookup).length,
-    refurbPct: Object.keys(refurbPctLookup).length
-  });
-};
-
-// Build lookup key from program and category (DAX: ProgramName + CategoryName)
-const buildKey = (program: string | null, category: string | null): string => {
-  const prog = program || '';
-  const cat = category || '';
-  return `${prog}${cat}`;
-};
-
-// Build lookup key with condition (DAX: ProgramName + CategoryName + Tag_PricingCondition)
-const buildRefurbKey = (program: string | null, category: string | null, condition: string | null): string => {
-  const prog = program || '';
-  const cat = category || '';
-  const cond = condition?.toUpperCase() || '';
-  return `${prog}${cat}${cond}`;
-};
-
-// Program variant generators for PPS lookup
-const getProgramVariantsForPPS = (program: string | null): string[] => {
-  if (!program) return [''];
-  const variants: string[] = [program];
-  const upperProgram = program.toUpperCase();
-  
-  // Don't generate variants for Mexico facilities
-  if (!upperProgram.includes('TIJUANA') && !upperProgram.includes('MONTERREY')) {
-    const wmMatch = program.match(/^([A-Z]+-WM)/i);
-    if (wmMatch && wmMatch[1] !== program) {
-      variants.push(wmMatch[1]);
-    }
-  }
-  return [...new Set(variants)];
-};
-
-// Program variant generators for Refurb lookup
-const getProgramVariantsForRefurb = (program: string | null): string[] => {
-  if (!program) return [''];
-  const variants: string[] = [program];
-  const upperProgram = program.toUpperCase();
-  const wmMatch = program.match(/^([A-Z]+-WM)/i);
-  if (wmMatch && wmMatch[1] !== program) {
-    variants.push(wmMatch[1]);
-  }
-  if (upperProgram.includes('TIJUANA') || upperProgram.includes('MONTERREY')) {
-    const facilityMatch = program.match(/^([A-Z]+)/i);
-    if (facilityMatch) {
-      variants.push(`${facilityMatch[1]}-WM`);
-    }
-  }
-  return [...new Set(variants)];
-};
-
-// Program variant generators for Check-In lookup
-const getProgramVariantsForCheckIn = (program: string | null): string[] => {
-  if (!program) return [''];
-  const variants: string[] = [program];
-  const upperProgram = program.toUpperCase();
-  
-  // Generate base WM variant (e.g., BENAR-WM from BENAR-WM-FORTWORTH)
-  const wmMatch = program.match(/^([A-Z]+-WM)/i);
-  if (wmMatch && wmMatch[1] !== program) {
-    variants.push(wmMatch[1]);
-  }
-  
-  return [...new Set(variants)];
-};
-
-// Condition variants for refurb lookups
-const getConditionVariants = (): string[] => {
-  return ['REFURBISHED', 'USED', 'NEW', 'BER', 'AS-IS'];
-};
+// Fee Calculator - Starting fresh with 3P Marketplace Fee ONLY
+// All other fees return 0 until verified correct
 
 // ============================================================================
-// EXCLUSION LOGIC
+// TYPES
 // ============================================================================
 
-// Check if sale is B2C (eligible for marketplace/revshare fees)
-const isB2CSale = (marketplace: string | null): boolean => {
-  if (!marketplace || marketplace.trim() === '') return false;
-  const mp = marketplace.toLowerCase();
-  
-  // Exclusions - these are NOT B2C
-  if (mp.includes('directliquidation') || mp === 'dl') return false;
-  if (mp.includes('gowholesale')) return false;
-  if (mp.includes('manual')) return false;
-  if (mp.includes('dsv')) return false;
-  if (mp.includes('transfer')) return false;
-  if (mp.includes('in store')) return false;
-  if (mp.includes('b2b')) return false;
-  if (mp.includes('wholesale')) return false;
-  if (mp.includes('pallet')) return false;
-  if (mp.includes('truckload')) return false;
-  
-  return true;
-};
-
-// Check if program is dropship (no PPS, refurb fees)
-const isDropshipProgram = (program: string | null, facility: string | null): boolean => {
-  if (facility?.toUpperCase().includes('DS')) return true;
-  if (facility?.toUpperCase() === 'MEXICO') return true;
-  if (program?.toUpperCase().startsWith('DS-')) return true;
-  if (program?.toUpperCase().includes('MONTERREY')) return true;
-  if (program?.toUpperCase().includes('DSV')) return true;
-  return false;
-};
-
-// Check if sale should be excluded from fee calculations entirely
-const isExcludedFromFees = (
-  marketplace: string | null,
-  program: string | null,
-  sortingIndex: string | null
-): boolean => {
-  const mp = (marketplace || '').toLowerCase();
-  const prog = (program || '').toUpperCase();
-  const sorting = (sortingIndex || '').toUpperCase();
-  
-  // DSV sales excluded from most fees
-  if (mp.includes('dsv') || prog.includes('DSV')) return true;
-  
-  // Manual/transfer sales
-  if (mp.includes('manual') || mp.includes('transfer')) return true;
-  
-  return false;
-};
-
-// Check if SAMS client (different fee rules)
-const isSAMSClient = (clientSource: string | null): boolean => {
-  return clientSource?.toUpperCase() === 'SAMS';
-};
-
-// Check if vendor pallet (special net dollars calculation)
-const isVendorPallet = (sortingIndex: string | null): boolean => {
-  return sortingIndex?.toUpperCase() === 'VENDOR PALLET';
-};
-
-// ============================================================================
-// FEE CALCULATION FUNCTIONS - Following hierarchy: Invoiced > Calculated
-// ============================================================================
-
-// Calculate Check-In Fee
-const calculateCheckInFee = (
-  invoicedValue: number | null | undefined,
-  category: string | null,
-  program: string | null,
-  isSAMS: boolean
-): number => {
-  // SAMS has no check-in fee
-  if (isSAMS) return 0;
-  
-  // 1. Use invoiced value if present (absolute value)
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. Use lookup-based calculation
-  const variants = getProgramVariantsForCheckIn(program);
-  for (const prog of variants) {
-    const key = buildKey(prog, category);
-    if (checkInLookup[key] !== undefined) {
-      return checkInLookup[key];
-    }
-  }
-  
-  return 0;
-};
-
-// Calculate Refurb Fee with full hierarchy
-const calculateRefurbFee = (
-  invoicedValue: number | null | undefined,
-  expectedHVRefurb: number | null | undefined,
-  category: string | null,
-  program: string | null,
-  effectiveRetail: number,
-  isDropship: boolean,
-  isSAMS: boolean,
-  isVendorPalletItem: boolean,
-  pricingCondition: string | null | undefined
-): number => {
-  // Dropship = no refurb fee
-  if (isDropship) return 0;
-  
-  // SAMS = no refurb fee (unless explicitly invoiced)
-  if (isSAMS) {
-    if (invoicedValue != null && invoicedValue !== 0) {
-      return Math.abs(invoicedValue);
-    }
-    return 0;
-  }
-  
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. For vendor pallets, use expected HV AS-IS refurb fee
-  if (isVendorPalletItem && expectedHVRefurb != null && expectedHVRefurb !== 0) {
-    return Math.abs(expectedHVRefurb);
-  }
-  
-  // 3. Use lookup-based calculation
-  const variants = getProgramVariantsForRefurb(program);
-  
-  // If we have actual condition, try that first
-  if (pricingCondition) {
-    for (const prog of variants) {
-      const key = buildRefurbKey(prog, category, pricingCondition);
-      if (refurbFeeLookup[key] !== undefined) {
-        const entry = refurbFeeLookup[key];
-        return entry.type === 'percent' 
-          ? (effectiveRetail * entry.value / 100)
-          : entry.value;
-      }
-      if (refurbPctLookup[key] !== undefined && effectiveRetail > 0) {
-        return effectiveRetail * refurbPctLookup[key];
-      }
-    }
-  }
-  
-  // Fall back to trying all condition variants
-  const conditions = getConditionVariants();
-  
-  // Try fixed fee lookup first
-  for (const prog of variants) {
-    for (const cond of conditions) {
-      const key = buildRefurbKey(prog, category, cond);
-      if (refurbFeeLookup[key] !== undefined) {
-        const entry = refurbFeeLookup[key];
-        return entry.type === 'percent' 
-          ? (effectiveRetail * entry.value / 100)
-          : entry.value;
-      }
-    }
-  }
-  
-  // Fall back to % of retail lookup
-  for (const prog of variants) {
-    for (const cond of conditions) {
-      const key = buildRefurbKey(prog, category, cond);
-      if (refurbPctLookup[key] !== undefined && effectiveRetail > 0) {
-        return effectiveRetail * refurbPctLookup[key];
-      }
-    }
-  }
-  
-  return 0;
-};
-
-// Calculate Overbox Fee - invoiced or calculated fallback
-const calculateOverboxFee = (
-  invoicedValue: number | null | undefined,
-  isB2C: boolean
-): number => {
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. No calculated fallback for overbox - it's invoiced only
-  return 0;
-};
-
-// Calculate Packaging Fee
-const calculatePackagingFee = (
-  invoicedValue: number | null | undefined
-): number => {
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  return 0;
-};
-
-// Calculate PPS (Pick-Pack-Ship) Fee
-const calculatePPSFee = (
-  invoicedValue: number | null | undefined,
-  category: string | null,
-  program: string | null,
-  isDropship: boolean,
-  isSAMS: boolean,
-  isExcluded: boolean
-): number => {
-  // Exclusions
-  if (isDropship) return 0;
-  if (isSAMS) return 0;
-  if (isExcluded) return 0;
-  
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. Use lookup-based calculation
-  const variants = getProgramVariantsForPPS(program);
-  for (const prog of variants) {
-    const key = buildKey(prog, category);
-    if (ppsLookup[key] !== undefined) {
-      return ppsLookup[key];
-    }
-  }
-  
-  return 0;
-};
-
-// Calculate Shipping Fee - invoiced or calculated
-const calculateShippingFee = (
-  invoicedValue: number | null | undefined,
-  isB2C: boolean,
-  salePrice: number
-): number => {
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. No calculated fallback - shipping is invoiced only
-  return 0;
-};
-
-// Calculate Revshare Fee - STRICT HIERARCHY: Invoiced only, no percentage defaults
-const calculateRevshareFee = (
-  invoicedValue: number | null | undefined
-): number => {
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. No calculated fallback - no percentage defaults allowed
-  return 0;
-};
-
-// Calculate 3PMP Fee - STRICT HIERARCHY: Invoiced only, no percentage defaults
-const calculate3PMPFee = (
-  invoicedValue: number | null | undefined
-): number => {
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. No calculated fallback - no percentage defaults allowed
-  return 0;
-};
-
-// Calculate Merchant Fee - INVOICED ONLY, NO FALLBACK
-const calculateMerchantFee = (
-  invoicedValue: number | null | undefined
-): number => {
-  // Merchant fee is ONLY from invoiced values - no percentage fallback
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  return 0;
-};
-
-// Calculate Marketing Fee - STRICT HIERARCHY: Invoiced only, no percentage defaults
-const calculateMarketingFee = (
-  invoicedValue: number | null | undefined
-): number => {
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. No calculated fallback - no percentage defaults allowed
-  return 0;
-};
-
-// Calculate Refund Fee (contra-revenue)
-const calculateRefundFee = (
-  invoicedValue: number | null | undefined,
-  refundAmount: number | null | undefined
-): number => {
-  // 1. Use invoiced value if present
-  if (invoicedValue != null && invoicedValue !== 0) {
-    return Math.abs(invoicedValue);
-  }
-  
-  // 2. Use refund_amount from sales data
-  if (refundAmount != null && refundAmount !== 0) {
-    return Math.abs(refundAmount);
-  }
-  
-  return 0;
-};
-
-// ============================================================================
-// MAIN INTERFACES AND CALCULATION FUNCTIONS
-// ============================================================================
-
-// Extended sale record with optional invoiced fee columns
 export interface SaleRecord {
   sale_price: number;
   category_name: string | null;
@@ -554,7 +16,7 @@ export interface SaleRecord {
   tag_clientsource?: string | null;
   refund_amount?: number | null;
   discount_amount?: number | null;
-  // Invoiced fee columns (for hierarchy precedence)
+  // Invoiced fee columns
   invoiced_check_in_fee?: number | null;
   invoiced_refurb_fee?: number | null;
   invoiced_overbox_fee?: number | null;
@@ -566,16 +28,17 @@ export interface SaleRecord {
   invoiced_3pmp_fee?: number | null;
   invoiced_marketing_fee?: number | null;
   invoiced_refund_fee?: number | null;
-  // Vendor pallet/invoice fields
+  // Calculated fee columns (from database)
+  calculated_3pmp_fee?: number | null;
+  // Other fields
   sorting_index?: string | null;
   vendor_invoice_total?: number | null;
   service_invoice_total?: number | null;
   expected_hv_as_is_refurb_fee?: number | null;
-  // Condition for refurb lookup
   tag_pricing_condition?: string | null;
+  b2c_auction?: string | null;
 }
 
-// All 11 fee components
 export interface CalculatedFees {
   checkInFee: number;
   refurbFee: number;
@@ -585,74 +48,223 @@ export interface CalculatedFees {
   shippingFee: number;
   merchantFee: number;
   revshareFee: number;
-  thirdPartyMPFee: number;  // 3PMP
+  thirdPartyMPFee: number;
   marketingFee: number;
   refundFee: number;
   totalFees: number;
 }
 
-// Calculate all fees for a single sale record
-export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
-  initializeLookups();
+export interface FeeBreakdownAggregated {
+  checkInFees: number;
+  refurbFees: number;
+  overboxFees: number;
+  packagingFees: number;
+  ppsFees: number;
+  shippingFees: number;
+  merchantFees: number;
+  revshareFees: number;
+  thirdPartyMPFees: number;
+  marketingFees: number;
+  refundFees: number;
+}
+
+// ============================================================================
+// 3P MARKETPLACE FEE - FINAL RULESET (WMUS ONLY)
+// ============================================================================
+
+/**
+ * Step 0: Client Gate - WMUS only
+ * Step 1: Hierarchy - Invoiced → Calculated → Fee Bible → 0
+ * Step 2: Fee Bible Rules (only if steps 1 & 2 are blank)
+ */
+const calculate3PMPFee = (sale: SaleRecord): number => {
+  // -------------------------------------------------------------------------
+  // STEP 0: CLIENT GATE - Only WMUS gets 3PMP fees
+  // -------------------------------------------------------------------------
+  const clientSource = (sale.tag_clientsource || '').toUpperCase().trim();
+  if (clientSource !== 'WMUS') {
+    return 0;
+  }
+
+  // -------------------------------------------------------------------------
+  // STEP 1: UNIVERSAL FEE HIERARCHY
+  // -------------------------------------------------------------------------
+  
+  // 1a. If ServiceThirdPartyMarketplaceFeeInvoiced is not blank → ABS(value)
+  if (sale.invoiced_3pmp_fee != null && sale.invoiced_3pmp_fee !== 0) {
+    return Math.abs(sale.invoiced_3pmp_fee);
+  }
+  
+  // 1b. If ServiceThirdPartyMarketplaceFeeCalculated is not blank → value
+  if (sale.calculated_3pmp_fee != null && sale.calculated_3pmp_fee !== 0) {
+    return sale.calculated_3pmp_fee;
+  }
+
+  // -------------------------------------------------------------------------
+  // STEP 2: EXPLICIT FEE BIBLE RULES (only if invoiced & calculated are blank)
+  // -------------------------------------------------------------------------
   
   const salePrice = Number(sale.sale_price) || 0;
-  const effectiveRetail = Number(sale.effective_retail) || Number(sale.mr_lmr_upc_average_category_retail) || 0;
-  const category = sale.category_name;
-  const program = sale.program_name;
-  const marketplace = sale.marketplace_profile_sold_on;
-  const facility = sale.facility;
+  if (salePrice <= 0) return 0;
   
-  // Determine exclusion flags
-  const isSAMS = isSAMSClient(sale.tag_clientsource);
-  const isDropship = isDropshipProgram(program, facility);
-  const isB2C = isB2CSale(marketplace);
-  const isExcluded = isExcludedFromFees(marketplace, program, sale.sorting_index);
-  const isVendorPalletItem = isVendorPallet(sale.sorting_index);
+  const marketplace = (sale.marketplace_profile_sold_on || '').toLowerCase().trim();
+  const category = (sale.category_name || '').toLowerCase().trim();
+  const b2cAuction = (sale.b2c_auction || '').toLowerCase().trim();
   
-  // Calculate all 11 fee components using hierarchy
-  const checkInFee = calculateCheckInFee(sale.invoiced_check_in_fee, category, program, isSAMS);
+  // Rule: If Marketplace contains DSV OR in store → 0
+  if (marketplace.includes('dsv') || marketplace.includes('in store') || marketplace.includes('instore')) {
+    return 0;
+  }
   
-  const refurbFee = calculateRefurbFee(
-    sale.invoiced_refurb_fee,
-    sale.expected_hv_as_is_refurb_fee,
-    category,
-    program,
-    effectiveRetail,
-    isDropship,
-    isSAMS,
-    isVendorPalletItem,
-    sale.tag_pricing_condition
-  );
+  // Rule: If Order Type Sold On <> "B2CMarketplace" → 0
+  // We check if b2c_auction indicates B2C, or if marketplace indicates non-B2C
+  const isB2CMarketplace = isB2C(marketplace, b2cAuction);
+  if (!isB2CMarketplace) {
+    return 0;
+  }
   
-  const overboxFee = calculateOverboxFee(sale.invoiced_overbox_fee, isB2C);
-  const packagingFee = calculatePackagingFee(sale.invoiced_packaging_fee);
+  // Rule: If Marketplace = WhatNot → 17%
+  if (marketplace.includes('whatnot')) {
+    return salePrice * 0.17;
+  }
   
-  const ppsFee = calculatePPSFee(
-    sale.invoiced_pps_fee,
-    category,
-    program,
-    isDropship,
-    isSAMS,
-    isExcluded
-  );
+  // Rule: If Marketplace = Wish → 20%
+  if (marketplace.includes('wish')) {
+    return salePrice * 0.20;
+  }
   
-  const shippingFee = calculateShippingFee(sale.invoiced_shipping_fee, isB2C, salePrice);
+  // Rule: If Marketplace = eBay AND Electronics → 8%
+  // Rule: If Marketplace = eBay → 12%
+  if (marketplace.includes('ebay')) {
+    const isElectronics = category.includes('electronics') || category.includes('tv') || 
+                          category.includes('computer') || category.includes('phone');
+    return salePrice * (isElectronics ? 0.08 : 0.12);
+  }
   
-  // Merchant fee is INVOICED ONLY - no calculated fallback
-  const merchantFee = calculateMerchantFee(sale.invoiced_merchant_fee);
+  // Rule: If Marketplace = WalmartMarketplace AND Electronics → 8%
+  // Rule: If Marketplace = WalmartMarketplace → 12%
+  if (marketplace.includes('walmart') && marketplace.includes('marketplace')) {
+    const isElectronics = category.includes('electronics') || category.includes('tv') || 
+                          category.includes('computer') || category.includes('phone');
+    return salePrice * (isElectronics ? 0.08 : 0.12);
+  }
   
-  const revshareFee = calculateRevshareFee(sale.invoiced_revshare_fee);
+  // Final fallback: 12% (per existing DAX logic)
+  return salePrice * 0.12;
+};
+
+/**
+ * Helper: Determine if sale is B2C Marketplace
+ */
+const isB2C = (marketplace: string, b2cAuction: string): boolean => {
+  // If b2c_auction explicitly indicates B2C
+  if (b2cAuction === 'b2cmarketplace' || b2cAuction === 'b2c') {
+    return true;
+  }
   
-  const thirdPartyMPFee = calculate3PMPFee(sale.invoiced_3pmp_fee);
+  // Exclusions - these are NOT B2C
+  if (!marketplace) return false;
+  if (marketplace.includes('directliquidation') || marketplace === 'dl') return false;
+  if (marketplace.includes('gowholesale')) return false;
+  if (marketplace.includes('manual')) return false;
+  if (marketplace.includes('dsv')) return false;
+  if (marketplace.includes('transfer')) return false;
+  if (marketplace.includes('in store')) return false;
+  if (marketplace.includes('b2b')) return false;
+  if (marketplace.includes('wholesale')) return false;
+  if (marketplace.includes('pallet')) return false;
+  if (marketplace.includes('truckload')) return false;
   
-  const marketingFee = calculateMarketingFee(sale.invoiced_marketing_fee);
+  // Known B2C marketplaces
+  if (marketplace.includes('ebay')) return true;
+  if (marketplace.includes('amazon')) return true;
+  if (marketplace.includes('whatnot')) return true;
+  if (marketplace.includes('wish')) return true;
+  if (marketplace.includes('shopify')) return true;
+  if (marketplace.includes('vipoutlet')) return true;
+  if (marketplace.includes('walmart') && marketplace.includes('marketplace')) return true;
+  if (marketplace.includes('flashfindz')) return true;
   
-  const refundFee = calculateRefundFee(sale.invoiced_refund_fee, sale.refund_amount);
+  // Default to true if marketplace exists and not excluded
+  return marketplace.length > 0;
+};
+
+// ============================================================================
+// PLACEHOLDER FEES - Return 0 until implemented
+// ============================================================================
+
+const calculateCheckInFee = (_sale: SaleRecord): number => {
+  // TODO: Implement after 3PMP is verified correct
+  return 0;
+};
+
+const calculateRefurbFee = (_sale: SaleRecord): number => {
+  // TODO: Implement after Check-In is verified correct
+  return 0;
+};
+
+const calculateOverboxFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+const calculatePackagingFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+const calculatePPSFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+const calculateShippingFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+const calculateMerchantFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+const calculateRevshareFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+const calculateMarketingFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+const calculateRefundFee = (_sale: SaleRecord): number => {
+  // TODO: Implement
+  return 0;
+};
+
+// ============================================================================
+// MAIN CALCULATION FUNCTIONS
+// ============================================================================
+
+export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
+  // Only 3PMP is active - all others return 0
+  const thirdPartyMPFee = calculate3PMPFee(sale);
   
-  // Total fees = sum of all components
-  // Note: merchantFee is only included if invoiced (not calculated), so no double-counting with 3PMP
+  const checkInFee = calculateCheckInFee(sale);
+  const refurbFee = calculateRefurbFee(sale);
+  const overboxFee = calculateOverboxFee(sale);
+  const packagingFee = calculatePackagingFee(sale);
+  const ppsFee = calculatePPSFee(sale);
+  const shippingFee = calculateShippingFee(sale);
+  const merchantFee = calculateMerchantFee(sale);
+  const revshareFee = calculateRevshareFee(sale);
+  const marketingFee = calculateMarketingFee(sale);
+  const refundFee = calculateRefundFee(sale);
+  
   const totalFees = checkInFee + refurbFee + overboxFee + packagingFee + ppsFee + 
-                    shippingFee + merchantFee + revshareFee + thirdPartyMPFee + marketingFee + refundFee;
+                    shippingFee + merchantFee + revshareFee + thirdPartyMPFee + 
+                    marketingFee + refundFee;
   
   return {
     checkInFee,
@@ -670,47 +282,20 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   };
 };
 
-// Calculate Net Dollars for a single sale following the hierarchy:
-// A. Vendor Pallets: Sale Price - Fees + Refurb Fee - Expected HV AS IS Refurb Fee
-// B. Vendor-Invoiced: VendorInvoiceTotal + ServiceInvoiceTotal
-// C. Standard: Sale Price (discount applied) - Fees
 export const calculateNetDollarsForSale = (sale: SaleRecord, fees: CalculatedFees): number => {
   const salePrice = Number(sale.sale_price) || 0;
   
-  // A. Vendor Pallets - special calculation
-  if (isVendorPallet(sale.sorting_index)) {
-    const expectedHVRefurb = Number(sale.expected_hv_as_is_refurb_fee) || 0;
-    // Net = Sale - TotalFees + RefurbFee - ExpectedHVRefurb
-    return salePrice - fees.totalFees + fees.refurbFee - expectedHVRefurb;
-  }
-  
-  // B. Vendor-Invoiced Items
+  // Vendor-Invoiced Items
   if (sale.vendor_invoice_total != null && sale.vendor_invoice_total !== 0) {
     const vendorTotal = Number(sale.vendor_invoice_total) || 0;
     const serviceTotal = Number(sale.service_invoice_total) || 0;
     return vendorTotal + serviceTotal;
   }
   
-  // C. Standard Case: Sale Price - Fees
+  // Standard: Sale Price - Fees
   return salePrice - fees.totalFees;
 };
 
-// Fee breakdown structure for aggregation
-export interface FeeBreakdownAggregated {
-  checkInFees: number;
-  refurbFees: number;
-  overboxFees: number;
-  packagingFees: number;
-  ppsFees: number;
-  shippingFees: number;
-  merchantFees: number;
-  revshareFees: number;
-  thirdPartyMPFees: number;
-  marketingFees: number;
-  refundFees: number;
-}
-
-// Calculate total fees for an array of sales with full breakdown
 export const calculateTotalFees = (sales: SaleRecord[]): {
   totalFees: number;
   netDollars: number;
@@ -732,10 +317,19 @@ export const calculateTotalFees = (sales: SaleRecord[]): {
   
   let totalFees = 0;
   let netDollars = 0;
-  let missedLookups = { checkIn: 0, pps: 0, refurb: 0 };
+  let wmusCount = 0;
+  let nonWmusCount = 0;
   
   for (const sale of sales) {
     const fees = calculateFeesForSale(sale);
+    
+    // Track WMUS vs non-WMUS
+    const clientSource = (sale.tag_clientsource || '').toUpperCase().trim();
+    if (clientSource === 'WMUS') {
+      wmusCount++;
+    } else {
+      nonWmusCount++;
+    }
     
     // Aggregate fees
     breakdown.checkInFees += fees.checkInFee;
@@ -751,23 +345,16 @@ export const calculateTotalFees = (sales: SaleRecord[]): {
     breakdown.refundFees += fees.refundFee;
     totalFees += fees.totalFees;
     
-    // Calculate net dollars per line item
     netDollars += calculateNetDollarsForSale(sale, fees);
-    
-    // Track misses for debugging
-    const isDropship = isDropshipProgram(sale.program_name, sale.facility);
-    const isSAMS = isSAMSClient(sale.tag_clientsource);
-    if (fees.checkInFee === 0 && sale.sale_price > 0 && !isSAMS) missedLookups.checkIn++;
-    if (fees.ppsFee === 0 && sale.sale_price > 0 && !isDropship && !isSAMS) missedLookups.pps++;
-    if (fees.refurbFee === 0 && sale.sale_price > 0 && !isDropship && !isSAMS) missedLookups.refurb++;
   }
   
   console.log('Fee calculation summary:', {
     totalSales: sales.length,
+    wmusCount,
+    nonWmusCount,
     totalFees,
     netDollars,
-    breakdown,
-    missedLookups
+    breakdown
   });
   
   return { totalFees, netDollars, breakdown };
@@ -783,7 +370,6 @@ export interface LegacyFeeBreakdown {
   marketingFees: number;
 }
 
-// Legacy function for components that haven't been updated yet
 export const calculateTotalFeesLegacy = (sales: SaleRecord[]): {
   totalFees: number;
   breakdown: LegacyFeeBreakdown;
