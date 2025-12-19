@@ -90,7 +90,6 @@ const parsePPS = (csv: string): PPSLookup => {
 };
 
 // Parse Refurb Fee CSV: Category,Program(s),Key,BasePriceType,Price,Pricing Condition,...
-// Key format: {Category}{Program}{PricingCondition}
 const parseRefurbFee = (csv: string): RefurbFeeLookup => {
   const lines = csv.split('\n').slice(1);
   const lookup: RefurbFeeLookup = {};
@@ -115,7 +114,6 @@ const parseRefurbFee = (csv: string): RefurbFeeLookup => {
 };
 
 // Parse % of Retail Refurb CSV: Category,Key,Program(s),Price
-// Key format: {Category}{Program}{PricingCondition}
 const parseRefurbPct = (csv: string): RefurbPctLookup => {
   const lines = csv.split('\n').slice(1);
   const lookup: RefurbPctLookup = {};
@@ -173,45 +171,56 @@ const buildRefurbKey = (category: string | null, program: string | null, conditi
   return `${cat}${prog}${cond}`;
 };
 
-// Extract base program patterns for lookup matching
-const getProgramVariants = (program: string | null): string[] => {
+// Extract program variants for PPS/Refurb lookups ONLY (not check-in)
+// TIJUANA-TVS and similar programs should try base -WM
+const getProgramVariantsForProcessing = (program: string | null): string[] => {
   if (!program) return [''];
   const variants: string[] = [program];
   
-  // Extract facility code and try with -WM suffix
-  const facilityMatch = program.match(/^([A-Z]+)/i);
-  if (facilityMatch) {
-    const facility = facilityMatch[1];
-    variants.push(`${facility}-WM`);
-    variants.push(`${facility}-WM-RECLAIMS-OVERSTOCK`);
-    variants.push(`${facility}-WM-OVERSTOCK`);
-  }
-  
-  // Try extracting base -WM pattern
+  // Extract base -WM pattern for processing fees
   const wmMatch = program.match(/^([A-Z]+-WM)/i);
   if (wmMatch) {
     variants.push(wmMatch[1]);
   }
   
-  return [...new Set(variants)]; // Remove duplicates
+  // For TIJUANA programs, try base facility-WM
+  if (program.includes('TIJUANA') || program.includes('MONTERREY')) {
+    const facilityMatch = program.match(/^([A-Z]+)/i);
+    if (facilityMatch) {
+      variants.push(`${facilityMatch[1]}-WM`);
+    }
+  }
+  
+  return [...new Set(variants)];
 };
 
-// Get all condition variants to try
+// Check-in fees ONLY match exact program - no fallback variants
+// Check-in is primarily for RECLAIMS-OVERSTOCK programs
+const getProgramVariantsForCheckIn = (program: string | null): string[] => {
+  if (!program) return [''];
+  // Only exact program match for check-in
+  return [program];
+};
+
+// Get all condition variants to try for refurb
 const getConditionVariants = (): string[] => {
   return ['REFURBISHED', 'USED', 'NEW', 'BER', 'AS-IS'];
 };
 
-// Determine if a marketplace is B2C (vs B2B/wholesale)
-const isB2CMarketplace = (marketplace: string | null): boolean => {
+// Determine if this is a B2C sale (marketplace fee + revshare applies)
+const isB2CSale = (marketplace: string | null): boolean => {
   if (!marketplace || marketplace.trim() === '') return false;
   
   const mp = marketplace.toLowerCase();
   
-  // B2B/Wholesale channels - NO marketplace fee
+  // B2B/Wholesale channels - NO fees
   if (mp.includes('dl') || mp.includes('directliquidation')) return false;
   if (mp.includes('gowholesale') || mp.includes('wholesale')) return false;
-  if (mp.includes('manual') && !mp.includes('whatnot')) return false;
+  if (mp.includes('manual')) return false;
+  
+  // DSV/Transfer - NO fees
   if (mp.includes('dsv')) return false;
+  if (mp.includes('transfer')) return false;
   if (mp.includes('in store')) return false;
   
   // B2C channels
@@ -222,7 +231,15 @@ const isB2CMarketplace = (marketplace: string | null): boolean => {
   if (mp.includes('wish')) return true;
   if (mp.includes('amazon')) return true;
   
-  // Default: assume NOT B2C for safety (avoid over-charging fees)
+  return false;
+};
+
+// Check if this is a dropship program (no processing fees)
+const isDropshipProgram = (program: string | null, facility: string | null): boolean => {
+  if (facility?.toUpperCase().includes('DS')) return true;
+  if (facility?.toUpperCase() === 'MEXICO') return true;
+  if (program?.toUpperCase().startsWith('DS-')) return true;
+  if (program?.toUpperCase().includes('MONTERREY')) return true;
   return false;
 };
 
@@ -234,14 +251,11 @@ const calculate3PMarketplaceFee = (
 ): number => {
   if (salePrice <= 0) return 0;
   
-  // Only apply to B2C marketplaces
-  if (!isB2CMarketplace(marketplace)) return 0;
+  // Only apply to B2C sales
+  if (!isB2CSale(marketplace)) return 0;
   
   const mp = (marketplace || '').toLowerCase();
   const cat = (category || '').toLowerCase();
-  
-  // DSV or in-store = 0 (already handled by isB2CMarketplace but explicit)
-  if (mp.includes('dsv') || mp.includes('in store')) return 0;
   
   // WhatNot = 17%
   if (mp.includes('whatnot') || mp.includes('flashfindz')) return salePrice * 0.17;
@@ -269,7 +283,7 @@ const calculate3PMarketplaceFee = (
 };
 
 // Calculate Revshare Fee (excluding SAMS)
-// Note: Revshare applies to all sales EXCEPT DSV
+// ONLY applies to B2C sales - not B2B or dropship
 const calculateRevshareFee = (
   salePrice: number,
   program: string | null,
@@ -277,18 +291,17 @@ const calculateRevshareFee = (
 ): number => {
   if (salePrice <= 0) return 0;
   
-  const mp = (marketplace || '').toLowerCase();
-  const prog = (program || '').toLowerCase();
+  // ONLY B2C sales get revshare
+  if (!isB2CSale(marketplace)) return 0;
   
-  // DSV = 0 (explicitly excluded in DAX)
-  if (mp.includes('dsv')) return 0;
+  const prog = (program || '').toLowerCase();
   
   // Reclaims, FC, Searcy = 4.5%
   if (prog.includes('reclaim') || prog.includes('fc') || prog.includes('searcy')) {
     return salePrice * 0.045;
   }
   
-  // Default = 5%
+  // Default B2C = 5%
   return salePrice * 0.05;
 };
 
@@ -325,9 +338,6 @@ export interface CalculatedFees {
   totalFees: number;
 }
 
-// Debug: track lookup misses
-let debugSampleCount = 0;
-
 export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   initializeLookups();
   
@@ -351,66 +361,74 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
     };
   }
   
-  // Build lookup keys - try multiple program variants
-  const programVariants = getProgramVariants(program);
+  const isDropship = isDropshipProgram(program, facility);
   const conditionVariants = getConditionVariants();
   
-  // Helper to find value in lookup with multiple key variants
-  const findInLookup = <T>(lookup: Record<string, T>): T | undefined => {
-    for (const prog of programVariants) {
-      const key = buildKey(category, prog);
-      if (lookup[key] !== undefined) return lookup[key];
+  // 1. Check-In Fee - EXACT program match only (primarily RECLAIMS-OVERSTOCK)
+  let checkInFee = 0;
+  const checkInVariants = getProgramVariantsForCheckIn(program);
+  for (const prog of checkInVariants) {
+    const key = buildKey(category, prog);
+    if (checkInLookup[key] !== undefined) {
+      checkInFee = checkInLookup[key];
+      break;
     }
-    return undefined;
-  };
-  
-  // Helper to find refurb value (needs condition)
-  const findRefurbInLookup = <T>(lookup: Record<string, T>): T | undefined => {
-    for (const prog of programVariants) {
-      for (const cond of conditionVariants) {
-        const key = buildRefurbKey(category, prog, cond);
-        if (lookup[key] !== undefined) return lookup[key];
-      }
-    }
-    return undefined;
-  };
-  
-  // 1. Check-In Fee
-  let checkInFee = findInLookup(checkInLookup) || 0;
-  // Default if no lookup found and program contains "boxes"
+  }
+  // Default if program contains "boxes"
   if (checkInFee === 0 && program?.toLowerCase().includes('boxes')) {
     checkInFee = 1.3;
   }
   
-  // 2. PPS Fee (0 if DS facility or dropship program)
+  // 2. PPS Fee (0 if dropship)
   let ppsFee = 0;
-  const isDropship = facility?.toUpperCase().includes('DS') || program?.toUpperCase().startsWith('DS-');
   if (!isDropship) {
-    ppsFee = findInLookup(ppsLookup) || 0;
-  }
-  
-  // 3. Refurb Fee
-  let refurbFee = 0;
-  if (!isDropship) {
-    // Check fixed fee lookup first (with condition variants)
-    const refurbFixed = findRefurbInLookup(refurbFeeLookup);
-    if (refurbFixed) {
-      refurbFee = refurbFixed.type === 'percent' 
-        ? (effectiveRetail * refurbFixed.value / 100)
-        : refurbFixed.value;
-    } else {
-      // Fall back to % of retail lookup (with condition variants)
-      const refurbPct = findRefurbInLookup(refurbPctLookup);
-      if (refurbPct && effectiveRetail > 0) {
-        refurbFee = effectiveRetail * refurbPct;
+    const ppsVariants = getProgramVariantsForProcessing(program);
+    for (const prog of ppsVariants) {
+      const key = buildKey(category, prog);
+      if (ppsLookup[key] !== undefined) {
+        ppsFee = ppsLookup[key];
+        break;
       }
     }
   }
   
-  // 4. 3P Marketplace Fee
+  // 3. Refurb Fee (0 if dropship)
+  let refurbFee = 0;
+  if (!isDropship) {
+    const refurbVariants = getProgramVariantsForProcessing(program);
+    
+    // Try fixed fee lookup first (with condition variants)
+    outer: for (const prog of refurbVariants) {
+      for (const cond of conditionVariants) {
+        const key = buildRefurbKey(category, prog, cond);
+        if (refurbFeeLookup[key] !== undefined) {
+          const entry = refurbFeeLookup[key];
+          refurbFee = entry.type === 'percent' 
+            ? (effectiveRetail * entry.value / 100)
+            : entry.value;
+          break outer;
+        }
+      }
+    }
+    
+    // Fall back to % of retail lookup if no fixed fee found
+    if (refurbFee === 0) {
+      outer2: for (const prog of refurbVariants) {
+        for (const cond of conditionVariants) {
+          const key = buildRefurbKey(category, prog, cond);
+          if (refurbPctLookup[key] !== undefined && effectiveRetail > 0) {
+            refurbFee = effectiveRetail * refurbPctLookup[key];
+            break outer2;
+          }
+        }
+      }
+    }
+  }
+  
+  // 4. 3P Marketplace Fee (B2C only)
   const marketplaceFee = calculate3PMarketplaceFee(salePrice, marketplace, category);
   
-  // 5. Revshare Fee
+  // 5. Revshare Fee (B2C only)
   const revshareFee = calculateRevshareFee(salePrice, program, marketplace);
   
   // 6. Marketing Fee
@@ -463,10 +481,11 @@ export const calculateTotalFees = (sales: SaleRecord[]): {
     breakdown.marketingFees += fees.marketingFee;
     totalFees += fees.totalFees;
     
-    // Track misses
+    // Track misses (only for non-dropship)
+    const isDropship = isDropshipProgram(sale.program_name, sale.facility);
     if (fees.checkInFee === 0 && sale.sale_price > 0) missedLookups.checkIn++;
-    if (fees.ppsFee === 0 && sale.sale_price > 0 && !sale.facility?.includes('DS')) missedLookups.pps++;
-    if (fees.refurbFee === 0 && sale.sale_price > 0 && !sale.facility?.includes('DS')) missedLookups.refurb++;
+    if (fees.ppsFee === 0 && sale.sale_price > 0 && !isDropship) missedLookups.pps++;
+    if (fees.refurbFee === 0 && sale.sale_price > 0 && !isDropship) missedLookups.refurb++;
   }
   
   console.log('Fee calculation summary:', {
