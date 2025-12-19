@@ -171,20 +171,41 @@ const buildRefurbKey = (category: string | null, program: string | null, conditi
   return `${cat}${prog}${cond}`;
 };
 
-// Extract program variants for PPS/Refurb lookups ONLY (not check-in)
-// TIJUANA-TVS and similar programs should try base -WM
-const getProgramVariantsForProcessing = (program: string | null): string[] => {
+// Extract program variants for PPS lookups - more restrictive
+// PPS should only apply to exact program or direct -WM variants for standard facilities
+const getProgramVariantsForPPS = (program: string | null): string[] => {
   if (!program) return [''];
   const variants: string[] = [program];
   
-  // Extract base -WM pattern for processing fees
+  // Only allow fallback to base -WM for standard facility programs (not TIJUANA/MONTERREY)
+  const upperProgram = program.toUpperCase();
+  if (!upperProgram.includes('TIJUANA') && !upperProgram.includes('MONTERREY')) {
+    // Extract base facility-WM if present
+    const wmMatch = program.match(/^([A-Z]+-WM)/i);
+    if (wmMatch && wmMatch[1] !== program) {
+      variants.push(wmMatch[1]);
+    }
+  }
+  
+  return [...new Set(variants)];
+};
+
+// Extract program variants for Refurb lookups - more inclusive
+// Refurb fees should match broader for better coverage
+const getProgramVariantsForRefurb = (program: string | null): string[] => {
+  if (!program) return [''];
+  const variants: string[] = [program];
+  
+  const upperProgram = program.toUpperCase();
+  
+  // Extract base facility-WM pattern for all programs
   const wmMatch = program.match(/^([A-Z]+-WM)/i);
-  if (wmMatch) {
+  if (wmMatch && wmMatch[1] !== program) {
     variants.push(wmMatch[1]);
   }
   
-  // For TIJUANA programs, try base facility-WM
-  if (program.includes('TIJUANA') || program.includes('MONTERREY')) {
+  // For TIJUANA/MONTERREY programs, also try base facility-WM
+  if (upperProgram.includes('TIJUANA') || upperProgram.includes('MONTERREY')) {
     const facilityMatch = program.match(/^([A-Z]+)/i);
     if (facilityMatch) {
       variants.push(`${facilityMatch[1]}-WM`);
@@ -194,12 +215,16 @@ const getProgramVariantsForProcessing = (program: string | null): string[] => {
   return [...new Set(variants)];
 };
 
-// Check-in fees ONLY match exact program - no fallback variants
-// Check-in is primarily for RECLAIMS-OVERSTOCK programs
+// Check-in fees ONLY match RECLAIMS-OVERSTOCK programs
 const getProgramVariantsForCheckIn = (program: string | null): string[] => {
   if (!program) return [''];
-  // Only exact program match for check-in
-  return [program];
+  // Only exact program match for check-in - these are primarily RECLAIMS-OVERSTOCK
+  const upperProgram = program.toUpperCase();
+  if (upperProgram.includes('RECLAIMS-OVERSTOCK')) {
+    return [program];
+  }
+  // No check-in fee for non-RECLAIMS programs
+  return [];
 };
 
 // Get all condition variants to try for refurb
@@ -214,8 +239,8 @@ const isB2CSale = (marketplace: string | null): boolean => {
   const mp = marketplace.toLowerCase();
   
   // B2B/Wholesale channels - NO fees
-  if (mp.includes('dl') || mp.includes('directliquidation')) return false;
-  if (mp.includes('gowholesale') || mp.includes('wholesale')) return false;
+  if (mp.includes('directliquidation') || mp === 'dl') return false;
+  if (mp.includes('gowholesale')) return false;
   if (mp.includes('manual')) return false;
   
   // DSV/Transfer - NO fees
@@ -223,15 +248,18 @@ const isB2CSale = (marketplace: string | null): boolean => {
   if (mp.includes('transfer')) return false;
   if (mp.includes('in store')) return false;
   
-  // B2C channels
+  // B2C channels - YES fees
   if (mp.includes('ebay')) return true;
-  if (mp.includes('walmart') && mp.includes('marketplace')) return true;
+  if (mp.includes('walmart')) return true; // Include all walmart marketplace variants
   if (mp.includes('whatnot') || mp.includes('flashfindz')) return true;
   if (mp.includes('shopify') || mp.includes('vipoutlet')) return true;
   if (mp.includes('wish')) return true;
   if (mp.includes('amazon')) return true;
+  if (mp.includes('newegg')) return true;
+  if (mp.includes('backmarket')) return true;
   
-  return false;
+  // Default: if marketplace is populated and not excluded, treat as B2C
+  return true;
 };
 
 // Check if this is a dropship program (no processing fees)
@@ -364,7 +392,7 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   const isDropship = isDropshipProgram(program, facility);
   const conditionVariants = getConditionVariants();
   
-  // 1. Check-In Fee - EXACT program match only (primarily RECLAIMS-OVERSTOCK)
+  // 1. Check-In Fee - ONLY for RECLAIMS-OVERSTOCK programs
   let checkInFee = 0;
   const checkInVariants = getProgramVariantsForCheckIn(program);
   for (const prog of checkInVariants) {
@@ -374,15 +402,11 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
       break;
     }
   }
-  // Default if program contains "boxes"
-  if (checkInFee === 0 && program?.toLowerCase().includes('boxes')) {
-    checkInFee = 1.3;
-  }
   
   // 2. PPS Fee (0 if dropship)
   let ppsFee = 0;
   if (!isDropship) {
-    const ppsVariants = getProgramVariantsForProcessing(program);
+    const ppsVariants = getProgramVariantsForPPS(program);
     for (const prog of ppsVariants) {
       const key = buildKey(category, prog);
       if (ppsLookup[key] !== undefined) {
@@ -395,7 +419,7 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   // 3. Refurb Fee (0 if dropship)
   let refurbFee = 0;
   if (!isDropship) {
-    const refurbVariants = getProgramVariantsForProcessing(program);
+    const refurbVariants = getProgramVariantsForRefurb(program);
     
     // Try fixed fee lookup first (with condition variants)
     outer: for (const prog of refurbVariants) {
