@@ -16,7 +16,7 @@ import {
   LabelList
 } from 'recharts';
 import { format } from 'date-fns';
-import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
+import { useFilterOptions, useFilteredSales, useFilteredFees } from '@/hooks/useFilteredData';
 import { mapMarketplace, marketplaceColors, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 const TAB_NAME = 'sales' as const;
@@ -30,10 +30,12 @@ const formatCurrency = (value: number) => {
 export function SalesTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { data: salesData, refetch: refetchData } = useFilteredSales(TAB_NAME);
+  const { data: feeData, refetch: refetchFees } = useFilteredFees(TAB_NAME);
 
   const refetch = () => {
     refetchOptions();
     refetchData();
+    refetchFees();
   };
 
   // Calculate metrics
@@ -42,6 +44,8 @@ export function SalesTab() {
   const unitsCount = salesData?.length || 0;
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
+  const totalFees = feeData?.reduce((sum, r) => sum + (Number(r.total_fees) || 0), 0) || 0;
+  const netSales = grossSales - totalFees;
 
   // Group by date with marketplace breakdown
   const dailyData = salesData?.reduce((acc, sale) => {
@@ -127,7 +131,7 @@ export function SalesTab() {
       />
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <KPICard
           title="Gross Sales"
           value={formatCurrency(grossSales)}
@@ -136,18 +140,25 @@ export function SalesTab() {
           variant="success"
         />
         <KPICard
+          title="Net Sales"
+          value={formatCurrency(netSales)}
+          subtitle="Gross Sales - Fees"
+          icon={<DollarSign className="h-5 w-5" />}
+          variant="primary"
+        />
+        <KPICard
           title="Recovery Rate"
           value={`${recoveryRate.toFixed(1)}%`}
           subtitle="Gross Sales / Effective Retail"
           icon={<Percent className="h-5 w-5" />}
-          variant="primary"
+          variant="info"
         />
         <KPICard
           title="Units Sold"
           value={unitsCount.toLocaleString()}
           subtitle="Excludes Transfers & $0 sales"
           icon={<Package className="h-5 w-5" />}
-          variant="info"
+          variant="default"
         />
         <KPICard
           title="Avg Sale Price"

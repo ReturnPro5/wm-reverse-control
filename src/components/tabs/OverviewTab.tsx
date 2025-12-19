@@ -90,7 +90,7 @@ export function OverviewTab() {
       />
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <KPICard
           title="Gross Sales"
           value={formatCurrency(grossSales)}
@@ -99,18 +99,25 @@ export function OverviewTab() {
           variant="success"
         />
         <KPICard
+          title="Net Sales"
+          value={formatCurrency(grossSales - totalFees)}
+          subtitle="Gross Sales - Fees"
+          icon={<DollarSign className="h-5 w-5" />}
+          variant="primary"
+        />
+        <KPICard
           title="Recovery Rate"
           value={`${recoveryRate.toFixed(1)}%`}
           subtitle="Gross Sales / Effective Retail"
           icon={<Percent className="h-5 w-5" />}
-          variant="primary"
+          variant="info"
         />
         <KPICard
           title="Avg Sale Price"
           value={formatCurrency(avgSalePrice)}
           subtitle="Per unit average"
           icon={<TrendingUp className="h-5 w-5" />}
-          variant="info"
+          variant="default"
         />
         <KPICard
           title="Total Fees"
