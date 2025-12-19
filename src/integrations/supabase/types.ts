@@ -181,6 +181,7 @@ export type Database = {
           sorting_index: string | null
           tag_clientsource: string | null
           tag_ebay_auction_sale: boolean | null
+          tag_pricing_condition: string | null
           trgid: string
           vendor_invoice_total: number | null
           wm_day_of_week: number | null
@@ -219,6 +220,7 @@ export type Database = {
           sorting_index?: string | null
           tag_clientsource?: string | null
           tag_ebay_auction_sale?: boolean | null
+          tag_pricing_condition?: string | null
           trgid: string
           vendor_invoice_total?: number | null
           wm_day_of_week?: number | null
@@ -257,6 +259,7 @@ export type Database = {
           sorting_index?: string | null
           tag_clientsource?: string | null
           tag_ebay_auction_sale?: boolean | null
+          tag_pricing_condition?: string | null
           trgid?: string
           vendor_invoice_total?: number | null
           wm_day_of_week?: number | null

@@ -328,7 +328,8 @@ const calculateRefurbFee = (
   effectiveRetail: number,
   isDropship: boolean,
   isSAMS: boolean,
-  isVendorPalletItem: boolean
+  isVendorPalletItem: boolean,
+  pricingCondition: string | null | undefined
 ): number => {
   // Dropship = no refurb fee
   if (isDropship) return 0;
@@ -353,6 +354,24 @@ const calculateRefurbFee = (
   
   // 3. Use lookup-based calculation
   const variants = getProgramVariantsForRefurb(program);
+  
+  // If we have actual condition, try that first
+  if (pricingCondition) {
+    for (const prog of variants) {
+      const key = buildRefurbKey(prog, category, pricingCondition);
+      if (refurbFeeLookup[key] !== undefined) {
+        const entry = refurbFeeLookup[key];
+        return entry.type === 'percent' 
+          ? (effectiveRetail * entry.value / 100)
+          : entry.value;
+      }
+      if (refurbPctLookup[key] !== undefined && effectiveRetail > 0) {
+        return effectiveRetail * refurbPctLookup[key];
+      }
+    }
+  }
+  
+  // Fall back to trying all condition variants
   const conditions = getConditionVariants();
   
   // Try fixed fee lookup first
@@ -609,6 +628,8 @@ export interface SaleRecord {
   vendor_invoice_total?: number | null;
   service_invoice_total?: number | null;
   expected_hv_as_is_refurb_fee?: number | null;
+  // Condition for refurb lookup
+  tag_pricing_condition?: string | null;
 }
 
 // All 11 fee components
@@ -656,7 +677,8 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
     effectiveRetail,
     isDropship,
     isSAMS,
-    isVendorPalletItem
+    isVendorPalletItem,
+    sale.tag_pricing_condition
   );
   
   const overboxFee = calculateOverboxFee(sale.invoiced_overbox_fee, isB2C);
