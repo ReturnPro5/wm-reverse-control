@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
@@ -15,16 +16,30 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions } from '@/hooks/useFilteredData';
-import { useTabFilters } from '@/contexts/FilterContext';
+import { useTabFilters, TabFilters } from '@/contexts/FilterContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 const TAB_NAME = 'processing' as const;
 
+// Create a stable filter key for React Query
+function createFilterKey(filters: TabFilters) {
+  return JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    wmDaysOfWeek: filters.wmDaysOfWeek,
+    programNames: filters.programNames,
+    excludedFileIds: filters.excludedFileIds,
+    facilities: filters.facilities,
+  });
+}
+
 export function ProcessingTab() {
   const queryClient = useQueryClient();
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { filters } = useTabFilters(TAB_NAME);
+  
+  // Create stable filter key
+  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   // First get production file IDs
   const { data: productionFileIds } = useQuery({
@@ -42,7 +57,7 @@ export function ProcessingTab() {
 
   // Fetch units from Production files only
   const { data: productionUnits, refetch: refetchData } = useQuery({
-    queryKey: ['production-units', TAB_NAME, productionFileIds, filters],
+    queryKey: ['production-units', TAB_NAME, productionFileIds, filterKey],
     queryFn: async () => {
       if (!productionFileIds || productionFileIds.length === 0) return [];
       
