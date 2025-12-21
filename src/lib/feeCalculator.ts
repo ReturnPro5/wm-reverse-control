@@ -162,11 +162,16 @@ const isB2C = (marketplace: string, b2cAuction: string): boolean => {
     return true;
   }
   
+  // BLANK or empty marketplace = NOT B2C (no 12% fallback)
+  if (!marketplace || marketplace.length === 0) {
+    return false;
+  }
+  
   // Exclusions - these are NOT B2C
-  if (!marketplace) return false;
   if (marketplace.includes('directliquidation') || marketplace === 'dl') return false;
+  if (marketplace.includes('dl2')) return false;  // Added DL2
   if (marketplace.includes('gowholesale')) return false;
-  if (marketplace.includes('manual')) return false;
+  if (marketplace.includes('manual') && !marketplace.includes('whatnot')) return false;  // Manual but not WhatNot
   if (marketplace.includes('dsv')) return false;
   if (marketplace.includes('transfer')) return false;
   if (marketplace.includes('in store')) return false;
@@ -175,7 +180,7 @@ const isB2C = (marketplace: string, b2cAuction: string): boolean => {
   if (marketplace.includes('pallet')) return false;
   if (marketplace.includes('truckload')) return false;
   
-  // Known B2C marketplaces
+  // Known B2C marketplaces - ONLY these get fees
   if (marketplace.includes('ebay')) return true;
   if (marketplace.includes('amazon')) return true;
   if (marketplace.includes('whatnot')) return true;
@@ -185,8 +190,8 @@ const isB2C = (marketplace: string, b2cAuction: string): boolean => {
   if (marketplace.includes('walmart') && marketplace.includes('marketplace')) return true;
   if (marketplace.includes('flashfindz')) return true;
   
-  // Default to true if marketplace exists and not excluded
-  return marketplace.length > 0;
+  // Unknown marketplace = NOT B2C (no fee)
+  return false;
 };
 
 // ============================================================================
