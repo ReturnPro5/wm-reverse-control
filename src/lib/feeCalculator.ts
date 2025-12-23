@@ -133,24 +133,23 @@ const calculate3PMPFee = (sale: SaleRecord): number => {
     return salePrice * 0.20;
   }
   
-  // Rule: If Marketplace = eBay AND Electronics → 8%
-  // Rule: If Marketplace = eBay → 12%
+  // Rule: If Marketplace = eBay → 12% (flat rate, no Electronics discount)
   if (marketplace.includes('ebay')) {
-    const isElectronics = category.includes('electronics') || category.includes('tv') || 
-                          category.includes('computer') || category.includes('phone');
-    return salePrice * (isElectronics ? 0.08 : 0.12);
+    return salePrice * 0.12;
   }
   
-  // Rule: If Marketplace = WalmartMarketplace AND Electronics → 8%
-  // Rule: If Marketplace = WalmartMarketplace → 12%
+  // Rule: If Marketplace = Walmart Marketplace → 12% (flat rate, no Electronics discount)
   if (marketplace.includes('walmart') && marketplace.includes('marketplace')) {
-    const isElectronics = category.includes('electronics') || category.includes('tv') || 
-                          category.includes('computer') || category.includes('phone');
-    return salePrice * (isElectronics ? 0.08 : 0.12);
+    return salePrice * 0.12;
   }
   
-  // Final fallback: 12% (per existing DAX logic)
-  return salePrice * 0.12;
+  // Rule: If Marketplace = Shopify/VipOutlet → 12%
+  if (marketplace.includes('shopify') || marketplace.includes('vipoutlet')) {
+    return salePrice * 0.12;
+  }
+  
+  // No fallback - only explicitly matched B2C marketplaces get fees
+  return 0;
 };
 
 /**
