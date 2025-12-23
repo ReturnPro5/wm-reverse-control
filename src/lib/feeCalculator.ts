@@ -1,7 +1,14 @@
-// Fee Calculator - 3P Marketplace Fee + Check-In Fee
-// All other fees return 0 until verified correct
+// feeCalculator.ts
+// Fee Calculator - 3P Marketplace Fee + Check-In Fee (+ pallet expected refurb fee)
+// 3PMP stays as-is per your instruction
+// Check-In updated to:
+// - WMUS only
+// - Pallet/vendor-invoiced rows get 0 check-in
+// - ABS always for invoiced + calculated
+// - Boxes programs have their own ($1.30)
+// - Lookup fallback
 
-import { getCheckInFeeFromLookup } from '@/data/checkinFeeLookup';
+import { getCheckInFeeFromLookup } from "@/data/checkinFeeLookup";
 
 // ============================================================================
 // TYPES
@@ -13,15 +20,15 @@ export interface SaleRecord {
   program_name: string | null;
   marketplace_profile_sold_on: string | null;
   facility: string | null;
+
   effective_retail?: number | null;
   mr_lmr_upc_average_category_retail?: number | null;
+
   tag_clientsource?: string | null;
   refund_amount?: number | null;
   discount_amount?: number | null;
 
-  // -----------------------------
   // Invoiced fee columns
-  // -----------------------------
   invoiced_check_in_fee?: number | null;
   invoiced_refurb_fee?: number | null;
   invoiced_overbox_fee?: number | null;
@@ -34,29 +41,17 @@ export interface SaleRecord {
   invoiced_marketing_fee?: number | null;
   invoiced_refund_fee?: number | null;
 
-  // -----------------------------
-  // Calculated fee columns (from database or CSV)
-  // NOTE: only calculated_3pmp_fee is used for 3PMP hierarchy
-  // -----------------------------
+  // Calculated fee columns (from DB / CSV)
   calculated_3pmp_fee?: number | null;
   calculated_check_in_fee?: number | null;
 
-  // Optional future calculated fields (safe to include; not required by current logic)
-  calculated_refurb_fee?: number | null;
-  calculated_overbox_fee?: number | null;
-  calculated_packaging_fee?: number | null;
-  calculated_pps_fee?: number | null;
-  calculated_shipping_fee?: number | null;
-  calculated_merchant_fee?: number | null;
-  calculated_revshare_fee?: number | null;
-  calculated_marketing_fee?: number | null;
-  calculated_refund_fee?: number | null;
-
   // Other fields
-  sorting_index?: string | null;
-  vendor_invoice_total?: number | null;
+  sorting_index?: string | null; // Pallet identifier: if blank -> NOT pallet
+  vendor_invoice_total?: number | null; // Pallet/vendor invoiced indicator
   service_invoice_total?: number | null;
-  expected_hv_as_is_refurb_fee?: number | null;
+
+  expected_hv_as_is_refurb_fee?: number | null; // Pallet expected refurb fee (pallets only)
+
   tag_pricing_condition?: string | null;
   b2c_auction?: string | null;
   master_program_name?: string | null;
@@ -92,129 +87,193 @@ export interface FeeBreakdownAggregated {
 }
 
 // ============================================================================
-// 3P MARKETPLACE FEE - FINAL RULESET (WMUS ONLY)  ✅ KEEP AS-IS
+// HELPERS
+// ============================================================================
+
+const toUpper = (v: unknown) => String(v ?? "").toUpperCase().trim();
+const toLower = (v: unknown) => String(v ?? "").toLowerCase().trim();
+
+const isNonZeroNumber = (v: unknown): v is number =>
+  typeof v === "number" && !Number.isNaN(v) && v !== 0;
+
+const absIfNumber = (v: unknown): number => {
+  if (typeof v !== "number" || Number.isNaN(v)) return 0;
+  return Math.abs(v);
+};
+
+const isBlank = (v: unknown) => String(v ?? "").trim() === "";
+
+// Pallet sale rule per your spec:
+// - sorting_index blank => NOT pallet
+// - sorting_index NOT blank => pallet
+const isPalletSale = (sale: SaleRecord): boolean => {
+  return !isBlank(sale.sorting_index);
+};
+
+// Vendor-invoiced indicator (these are pallet/vendor invoiced items)
+// Your week-45 math only works when we exclude these from check-in.
+const isVendorInvoiced = (sale: SaleRecord): boolean => {
+  return isNonZeroNumber(sale.vendor_invoice_total);
+};
+
+// ============================================================================
+// 3P MARKETPLACE FEE - FINAL RULESET (WMUS ONLY)  (UNCHANGED)
 // ============================================================================
 
 const calculate3PMPFee = (sale: SaleRecord): number => {
-  // STEP 0: WMUS only
-  const clientSource = (sale.tag_clientsource || '').toUpperCase().trim();
-  if (clientSource !== 'WMUS') {
-    return 0;
-  }
+  // STEP 0: WMUS gate
+  const clientSource = toUpper(sale.tag_clientsource);
+  if (clientSource !== "WMUS") return 0;
 
   // STEP 1: Invoiced → Calculated → Fee Bible → 0
-
-  // 1a: Invoiced
   if (sale.invoiced_3pmp_fee != null && sale.invoiced_3pmp_fee !== 0) {
     return Math.abs(sale.invoiced_3pmp_fee);
   }
 
-  // 1b: Calculated (from DB)
   if (sale.calculated_3pmp_fee != null && sale.calculated_3pmp_fee !== 0) {
     return sale.calculated_3pmp_fee;
   }
 
-  // STEP 2: Fee Bible (only if invoiced & calculated are blank)
+  // STEP 2: Fee Bible
   const salePrice = Number(sale.sale_price) || 0;
   if (salePrice <= 0) return 0;
 
-  const marketplace = (sale.marketplace_profile_sold_on || '').toLowerCase().trim();
-  const b2cAuction = (sale.b2c_auction || '').toLowerCase().trim();
+  const marketplace = toLower(sale.marketplace_profile_sold_on);
+  const b2cAuction = toLower(sale.b2c_auction);
 
-  // Rule: DSV / in-store → 0
-  if (marketplace.includes('dsv') || marketplace.includes('in store') || marketplace.includes('instore')) {
+  // DSV / In Store => 0
+  if (marketplace.includes("dsv") || marketplace.includes("in store") || marketplace.includes("instore")) {
     return 0;
   }
 
-  // Rule: must be B2C marketplace
   const isB2CMarketplace = isB2C(marketplace, b2cAuction);
-  if (!isB2CMarketplace) {
-    return 0;
-  }
+  if (!isB2CMarketplace) return 0;
 
-  // Rule: WhatNot → 17%
-  if (marketplace.includes('whatnot')) return salePrice * 0.17;
+  if (marketplace.includes("whatnot")) return salePrice * 0.17;
+  if (marketplace.includes("wish")) return salePrice * 0.2;
 
-  // Rule: Wish → 20%
-  if (marketplace.includes('wish')) return salePrice * 0.20;
+  // eBay => 12%
+  if (marketplace.includes("ebay")) return salePrice * 0.12;
 
-  // Rule: eBay → 12%
-  if (marketplace.includes('ebay')) return salePrice * 0.12;
+  // Walmart Marketplace => 12%
+  if (marketplace.includes("walmart") && marketplace.includes("marketplace")) return salePrice * 0.12;
 
-  // Rule: Walmart Marketplace → 12%
-  if (marketplace.includes('walmart') && marketplace.includes('marketplace')) return salePrice * 0.12;
-
-  // Rule: Shopify/VIPOutlet → 12%
-  if (marketplace.includes('shopify') || marketplace.includes('vipoutlet')) return salePrice * 0.12;
+  // Shopify / VIPOutlet => 12%
+  if (marketplace.includes("shopify") || marketplace.includes("vipoutlet")) return salePrice * 0.12;
 
   return 0;
 };
 
 const isB2C = (marketplace: string, b2cAuction: string): boolean => {
-  if (b2cAuction === 'b2cmarketplace' || b2cAuction === 'b2c') return true;
+  if (b2cAuction === "b2cmarketplace" || b2cAuction === "b2c") return true;
 
   if (!marketplace) return false;
 
-  // Exclusions
-  if (marketplace.includes('directliquidation') || marketplace === 'dl') return false;
-  if (marketplace.includes('dl2')) return false;
-  if (marketplace.includes('gowholesale')) return false;
-  if (marketplace.includes('manual') && !marketplace.includes('whatnot')) return false;
-  if (marketplace.includes('dsv')) return false;
-  if (marketplace.includes('transfer')) return false;
-  if (marketplace.includes('in store')) return false;
-  if (marketplace.includes('b2b')) return false;
-  if (marketplace.includes('wholesale')) return false;
-  if (marketplace.includes('pallet')) return false;
-  if (marketplace.includes('truckload')) return false;
+  if (marketplace.includes("directliquidation") || marketplace === "dl") return false;
+  if (marketplace.includes("dl2")) return false;
+  if (marketplace.includes("gowholesale")) return false;
+  if (marketplace.includes("manual") && !marketplace.includes("whatnot")) return false;
+  if (marketplace.includes("dsv")) return false;
+  if (marketplace.includes("transfer")) return false;
+  if (marketplace.includes("in store")) return false;
+  if (marketplace.includes("b2b")) return false;
+  if (marketplace.includes("wholesale")) return false;
+  if (marketplace.includes("pallet")) return false;
+  if (marketplace.includes("truckload")) return false;
 
-  // Known B2C marketplaces
-  if (marketplace.includes('ebay')) return true;
-  if (marketplace.includes('amazon')) return true;
-  if (marketplace.includes('whatnot')) return true;
-  if (marketplace.includes('wish')) return true;
-  if (marketplace.includes('shopify')) return true;
-  if (marketplace.includes('vipoutlet')) return true;
-  if (marketplace.includes('walmart') && marketplace.includes('marketplace')) return true;
-  if (marketplace.includes('flashfindz')) return true;
+  if (marketplace.includes("ebay")) return true;
+  if (marketplace.includes("amazon")) return true;
+  if (marketplace.includes("whatnot")) return true;
+  if (marketplace.includes("wish")) return true;
+  if (marketplace.includes("shopify")) return true;
+  if (marketplace.includes("vipoutlet")) return true;
+  if (marketplace.includes("walmart") && marketplace.includes("marketplace")) return true;
+  if (marketplace.includes("flashfindz")) return true;
 
   return false;
 };
 
 // ============================================================================
-// CHECK-IN FEE (the one you’re validating now)
+// CHECK-IN FEE (UPDATED)
 // ============================================================================
 
+/**
+ * Check-In Fee Calculation (WMUS ONLY)
+ *
+ * IMPORTANT UPDATES:
+ * - WMUS only
+ * - Pallet/vendor-invoiced rows get 0 check-in (this is what pulls Week 45 to ~15K)
+ * - ABS always for invoiced + calculated
+ * - "boxes" master program => $1.30
+ *
+ * Hierarchy:
+ * 0. WMUS gate
+ * 0b. If pallet/vendor-invoiced => 0
+ * 1. Invoiced (ABS)
+ * 2. "boxes" program => $1.30
+ * 3. Calculated (ABS)
+ * 4. Lookup (category + program)
+ * 5. Else 0
+ */
 const calculateCheckInFee = (sale: SaleRecord): number => {
-  // Step 1: Invoiced (ABS)
+  // WMUS only
+  const clientSource = toUpper(sale.tag_clientsource);
+  if (clientSource !== "WMUS") return 0;
+
+  // Pallets/vendor-invoiced should NOT get check-in fee
+  // (this is the key fix that moved Week 45 from ~38K down to ~15K)
+  if (isVendorInvoiced(sale) || isPalletSale(sale)) {
+    return 0;
+  }
+
+  // 1) Invoiced fee (ABS)
   if (sale.invoiced_check_in_fee != null && sale.invoiced_check_in_fee !== 0) {
     return Math.abs(sale.invoiced_check_in_fee);
   }
 
-  // Step 2: Master program contains "boxes" → $1.30
-  const masterProgram = (sale.master_program_name || '').toLowerCase();
-  if (masterProgram.includes('boxes')) {
-    return 1.30;
+  // 2) Boxes special rule
+  const masterProgram = toLower(sale.master_program_name);
+  if (masterProgram.includes("boxes")) {
+    return 1.3;
   }
 
-  // Step 3: Calculated (from file/DB)
+  // 3) Calculated fee (ABS)
   if (sale.calculated_check_in_fee != null && sale.calculated_check_in_fee !== 0) {
-    return sale.calculated_check_in_fee;
+    return Math.abs(sale.calculated_check_in_fee);
   }
 
-  // Step 4: Lookup fallback
+  // 4) Lookup fallback
   const lookupFee = getCheckInFeeFromLookup(sale.category_name, sale.program_name);
   if (lookupFee > 0) return lookupFee;
 
-  // Step 5: Default
   return 0;
 };
 
 // ============================================================================
-// PLACEHOLDER FEES (still 0 until verified)
+// PALLET EXPECTED FEE (REFURB) - PALLETS ONLY (sorting_index NOT blank)
 // ============================================================================
 
-const calculateRefurbFee = (_sale: SaleRecord): number => 0;
+/**
+ * Expected HV AS-IS Refurb Fee
+ * - ONLY apply for pallets (sorting_index NOT blank)
+ * - ABS always
+ * - Else 0
+ */
+const calculateRefurbFee = (sale: SaleRecord): number => {
+  if (!isPalletSale(sale)) return 0;
+
+  // Use expected pallet fee field if present
+  if (sale.expected_hv_as_is_refurb_fee != null && sale.expected_hv_as_is_refurb_fee !== 0) {
+    return Math.abs(sale.expected_hv_as_is_refurb_fee);
+  }
+
+  return 0;
+};
+
+// ============================================================================
+// PLACEHOLDER FEES - Return 0 until implemented
+// ============================================================================
+
 const calculateOverboxFee = (_sale: SaleRecord): number => 0;
 const calculatePackagingFee = (_sale: SaleRecord): number => 0;
 const calculatePPSFee = (_sale: SaleRecord): number => 0;
@@ -230,9 +289,11 @@ const calculateRefundFee = (_sale: SaleRecord): number => 0;
 
 export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
   const thirdPartyMPFee = calculate3PMPFee(sale);
-
   const checkInFee = calculateCheckInFee(sale);
+
+  // Pallet expected fee lives here for now (refurb bucket)
   const refurbFee = calculateRefurbFee(sale);
+
   const overboxFee = calculateOverboxFee(sale);
   const packagingFee = calculatePackagingFee(sale);
   const ppsFee = calculatePPSFee(sale);
@@ -274,17 +335,19 @@ export const calculateFeesForSale = (sale: SaleRecord): CalculatedFees => {
 export const calculateNetDollarsForSale = (sale: SaleRecord, fees: CalculatedFees): number => {
   const salePrice = Number(sale.sale_price) || 0;
 
-  // Vendor-invoiced items
+  // Vendor-Invoiced Items
   if (sale.vendor_invoice_total != null && sale.vendor_invoice_total !== 0) {
     const vendorTotal = Number(sale.vendor_invoice_total) || 0;
     const serviceTotal = Number(sale.service_invoice_total) || 0;
     return vendorTotal + serviceTotal;
   }
 
+  // Standard: Sale Price - Fees
   return salePrice - fees.totalFees;
 };
 
-// ✅ THIS is the export your SalesTab is expecting:
+// ✅ This export fixes your runtime error:
+// "does not provide an export named 'calculateTotalFees'"
 export const calculateTotalFees = (sales: SaleRecord[]): {
   totalFees: number;
   netDollars: number;
@@ -307,8 +370,15 @@ export const calculateTotalFees = (sales: SaleRecord[]): {
   let totalFees = 0;
   let netDollars = 0;
 
+  let wmusCount = 0;
+  let nonWmusCount = 0;
+
   for (const sale of sales) {
     const fees = calculateFeesForSale(sale);
+
+    const clientSource = toUpper(sale.tag_clientsource);
+    if (clientSource === "WMUS") wmusCount++;
+    else nonWmusCount++;
 
     breakdown.checkInFees += fees.checkInFee;
     breakdown.refurbFees += fees.refurbFee;
@@ -325,6 +395,15 @@ export const calculateTotalFees = (sales: SaleRecord[]): {
     totalFees += fees.totalFees;
     netDollars += calculateNetDollarsForSale(sale, fees);
   }
+
+  console.log("Fee calculation summary:", {
+    totalSales: sales.length,
+    wmusCount,
+    nonWmusCount,
+    totalFees,
+    netDollars,
+    breakdown,
+  });
 
   return { totalFees, netDollars, breakdown };
 };
