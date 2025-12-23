@@ -1,5 +1,7 @@
-// Fee Calculator - Starting fresh with 3P Marketplace Fee ONLY
+// Fee Calculator - 3P Marketplace Fee + Check-In Fee
 // All other fees return 0 until verified correct
+
+import { getCheckInFeeFromLookup } from '@/data/checkinFeeLookup';
 
 // ============================================================================
 // TYPES
@@ -30,6 +32,7 @@ export interface SaleRecord {
   invoiced_refund_fee?: number | null;
   // Calculated fee columns (from database)
   calculated_3pmp_fee?: number | null;
+  calculated_check_in_fee?: number | null;
   // Other fields
   sorting_index?: string | null;
   vendor_invoice_total?: number | null;
@@ -37,6 +40,7 @@ export interface SaleRecord {
   expected_hv_as_is_refurb_fee?: number | null;
   tag_pricing_condition?: string | null;
   b2c_auction?: string | null;
+  master_program_name?: string | null;
 }
 
 export interface CalculatedFees {
@@ -197,8 +201,39 @@ const isB2C = (marketplace: string, b2cAuction: string): boolean => {
 // PLACEHOLDER FEES - Return 0 until implemented
 // ============================================================================
 
-const calculateCheckInFee = (_sale: SaleRecord): number => {
-  // TODO: Implement after 3PMP is verified correct
+/**
+ * Check-In Fee Calculation
+ * Hierarchy:
+ * 1. If invoiced_check_in_fee is not blank → ABS(value)
+ * 2. If master_program_name CONTAINS "boxes" (case-insensitive) → $1.30
+ * 3. If calculated_check_in_fee is not blank → use it
+ * 4. Key lookup from CSV using category_name + program_name → Price
+ * 5. Else → $0
+ */
+const calculateCheckInFee = (sale: SaleRecord): number => {
+  // Step 1: Invoiced fee takes priority
+  if (sale.invoiced_check_in_fee != null && sale.invoiced_check_in_fee !== 0) {
+    return Math.abs(sale.invoiced_check_in_fee);
+  }
+  
+  // Step 2: Master program contains "boxes" → $1.30
+  const masterProgram = (sale.master_program_name || '').toLowerCase();
+  if (masterProgram.includes('boxes')) {
+    return 1.30;
+  }
+  
+  // Step 3: Calculated fee from database (CheckInFeeCalculated)
+  if (sale.calculated_check_in_fee != null && sale.calculated_check_in_fee !== 0) {
+    return sale.calculated_check_in_fee;
+  }
+  
+  // Step 4: Key lookup from CSV
+  const lookupFee = getCheckInFeeFromLookup(sale.category_name, sale.program_name);
+  if (lookupFee > 0) {
+    return lookupFee;
+  }
+  
+  // Step 5: Default
   return 0;
 };
 
