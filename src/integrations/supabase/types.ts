@@ -150,6 +150,7 @@ export type Database = {
       sales_metrics: {
         Row: {
           b2c_auction: string | null
+          calculated_check_in_fee: number | null
           category_name: string | null
           created_at: string
           discount_amount: number | null
@@ -189,6 +190,7 @@ export type Database = {
         }
         Insert: {
           b2c_auction?: string | null
+          calculated_check_in_fee?: number | null
           category_name?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -228,6 +230,7 @@ export type Database = {
         }
         Update: {
           b2c_auction?: string | null
+          calculated_check_in_fee?: number | null
           category_name?: string | null
           created_at?: string
           discount_amount?: number | null

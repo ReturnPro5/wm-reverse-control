@@ -176,6 +176,8 @@ export function useFileUpload() {
               service_invoice_total: unit.serviceInvoiceTotal,
               vendor_invoice_total: unit.vendorInvoiceTotal,
               expected_hv_as_is_refurb_fee: unit.expectedHvAsIsRefurbFee,
+              // Calculated fee from CSV (CheckInFeeCalculated)
+              calculated_check_in_fee: unit.checkInFee,
               // Additional fields
               sorting_index: unit.sortingIndex || null,
               b2c_auction: unit.b2cAuction || null,
