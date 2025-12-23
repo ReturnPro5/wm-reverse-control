@@ -36,7 +36,6 @@ export interface ParsedUnit {
   wmDayOfWeek: number | null;
   currentStage: 'Received' | 'CheckedIn' | 'Tested' | 'Listed' | 'Sold' | null;
 
-  // Invoiced fees
   invoicedCheckInFee: number | null;
   invoicedRefurbFee: number | null;
   invoicedOverboxFee: number | null;
@@ -59,7 +58,7 @@ export interface ParsedUnit {
 }
 
 function parseNumber(value: string): number | null {
-  if (!value || value.trim() === '') return null;
+  if (!value) return null;
   const cleaned = value.replace(/[,$]/g, '').trim();
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
@@ -67,20 +66,27 @@ function parseNumber(value: string): number | null {
 
 export function parseCSV(content: string, fileName: string) {
   const lines = content.split('\n');
-  const headers = lines[0].split(',').map(h => h.trim());
+  if (lines.length < 2) return { units: [], fileType: 'Unknown', businessDate: null };
 
+  const fileType = determineFileType(fileName);
+  const businessDate = parseFileBusinessDate(fileName);
+
+  const headers = lines[0].split(',').map(h => h.trim());
   const headerIndex: Record<string, number> = {};
   headers.forEach((h, i) => (headerIndex[h] = i));
 
-  const getValue = (row: string[], name: string) =>
-    headerIndex[name] !== undefined ? row[headerIndex[name]] : '';
+  const getValue = (row: string[], col: string) =>
+    headerIndex[col] !== undefined ? row[headerIndex[col]] : '';
 
   const units: ParsedUnit[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const row = lines[i].split(',').map(v => v.trim());
+    const row = lines[i].split(',');
     const trgid = getValue(row, 'TRGID');
     if (!trgid) continue;
+
+    const salePrice = parseNumber(getValue(row, 'Sale Price (Discount applied)'));
+    const refundAmount = parseNumber(getValue(row, 'RefundedSalePriceCalculated'));
 
     const invoicedCheckInFee =
       parseNumber(getValue(row, 'CheckInFeeInvoiced')) ??
@@ -88,11 +94,7 @@ export function parseCSV(content: string, fileName: string) {
       parseNumber(getValue(row, 'InvoicedCheckInFee')) ??
       parseNumber(getValue(row, 'Invoiced Check In Fee'));
 
-    const orderClosedDate = getValue(row, 'OrderClosedDate')
-      ? new Date(getValue(row, 'OrderClosedDate'))
-      : null;
-
-    units.push({
+    const unit: ParsedUnit = {
       trgid,
       programName: getValue(row, 'ProgramName'),
       masterProgramName: getValue(row, 'Master Program Name'),
@@ -107,12 +109,12 @@ export function parseCSV(content: string, fileName: string) {
       testedOn: null,
       receivedOn: null,
       firstListedDate: null,
-      orderClosedDate,
-      salePrice: parseNumber(getValue(row, 'Sale Price (Discount applied)')),
+      orderClosedDate: null,
+      salePrice,
       discountAmount: null,
-      grossSale: parseNumber(getValue(row, 'Sale Price (Discount applied)')),
-      refundAmount: parseNumber(getValue(row, 'RefundedSalePriceCalculated')),
-      isRefunded: false,
+      grossSale: salePrice,
+      refundAmount,
+      isRefunded: !!refundAmount && refundAmount > 0,
       checkInFee: null,
       packagingFee: null,
       pickPackShipFee: null,
@@ -124,8 +126,8 @@ export function parseCSV(content: string, fileName: string) {
       locationId: getValue(row, 'LocationID'),
       tagClientOwnership: getValue(row, 'Tag_Ownership'),
       tagClientSource: getValue(row, 'Tag_ClientSource'),
-      wmWeek: orderClosedDate ? getWMWeekNumber(orderClosedDate) : null,
-      wmDayOfWeek: orderClosedDate ? getWMDayOfWeek(orderClosedDate) : null,
+      wmWeek: null,
+      wmDayOfWeek: null,
       currentStage: null,
 
       invoicedCheckInFee,
@@ -145,12 +147,10 @@ export function parseCSV(content: string, fileName: string) {
       sortingIndex: '',
       b2cAuction: '',
       tagEbayAuctionSale: false,
-    });
+    };
+
+    units.push(unit);
   }
 
-  return {
-    units,
-    fileType: determineFileType(fileName),
-    businessDate: parseFileBusinessDate(fileName),
-  };
+  return { units, fileType, businessDate };
 }
