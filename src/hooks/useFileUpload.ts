@@ -159,7 +159,7 @@ export function useFileUpload() {
               wm_week: u.wmWeek,
               wm_day_of_week: u.wmDayOfWeek,
 
-              // INVOICED FEES
+              // INVOICED FEES (columns that exist in schema)
               invoiced_check_in_fee: u.invoicedCheckInFee,
               invoiced_refurb_fee: u.invoicedRefurbFee,
               invoiced_overbox_fee: u.invoicedOverboxFee,
@@ -172,17 +172,11 @@ export function useFileUpload() {
               invoiced_marketing_fee: u.invoicedMarketingFee,
               invoiced_refund_fee: u.invoicedRefundFee,
 
-              // CALCULATED FEES (ALL)
+              // CALCULATED CHECK-IN FEE (only column that exists)
               calculated_check_in_fee: u.checkInFee,
-              calculated_refurb_fee: u.refurbishingFee,
-              calculated_overbox_fee: u.overboxFee,
-              calculated_packaging_fee: u.packagingFee,
-              calculated_pps_fee: u.pickPackShipFee,
-              calculated_shipping_fee: u.shippingFee,
-              calculated_merchant_fee: u.merchantFee,
-              calculated_revshare_fee: u.revshareFee,
-              calculated_marketing_fee: u.marketingFee,
-              calculated_refund_fee: u.refundFee,
+
+              // Expected fee from CSV
+              expected_hv_as_is_refurb_fee: u.refurbishingFee,
 
               b2c_auction: u.b2cAuction || null,
               sorting_index: u.sortingIndex || null,
