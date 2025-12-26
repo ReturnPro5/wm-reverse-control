@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { parseCSV, ParsedUnit } from '@/lib/csvParser';
-import { determineFileType, parseFileBusinessDate, getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
-import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { parseCSV } from '@/lib/csvParser';
+import { format } from 'date-fns';
+import { getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
 
 export interface UploadProgress {
   stage: 'reading' | 'parsing' | 'uploading' | 'complete' | 'error';
@@ -11,12 +11,38 @@ export interface UploadProgress {
   progress: number;
 }
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
+
 export function useFileUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const { toast } = useToast();
 
   const uploadFile = useCallback(async (file: File) => {
+    // File size validation
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        title: 'File too large',
+        description: 'Maximum file size is 50MB.',
+        variant: 'destructive',
+      });
+      return { success: false };
+    }
+
+    // File type validation
+    const validExtensions = ['.csv', '.xlsx', '.xls'];
+    const hasValidExtension = validExtensions.some(ext => 
+      file.name.toLowerCase().endsWith(ext)
+    );
+    if (!hasValidExtension) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload a CSV or Excel file.',
+        variant: 'destructive',
+      });
+      return { success: false };
+    }
+
     setIsUploading(true);
     setUploadProgress({ stage: 'reading', message: 'Reading file...', progress: 10 });
 
@@ -28,27 +54,21 @@ export function useFileUpload() {
       const { units, fileType, businessDate } = parseCSV(content, file.name);
 
       if (units.length === 0) {
-        throw new Error('No valid data found in file');
+        throw new Error('No valid data found in file. Please check the file format.');
       }
 
-      const detectedType = determineFileType(file.name);
-      const isExplicitType = ['sales', 'inbound', 'outbound', 'inventory', 'production', 'processing'].some(
-        keyword => file.name.toLowerCase().includes(keyword)
-      );
-
-      if (!isExplicitType) {
-        toast({
-          title: 'File Type Auto-Detected',
-          description: `File categorized as "${detectedType}" based on filename.`,
-        });
+      // Limit total records for safety
+      if (units.length > 500000) {
+        throw new Error('File contains too many records. Maximum is 500,000 rows.');
       }
 
-      setUploadProgress({ stage: 'uploading', message: 'Saving to database...', progress: 50 });
+      setUploadProgress({ stage: 'uploading', message: 'Creating file record...', progress: 40 });
 
+      // Insert file upload record
       const { data: fileUpload, error: fileError } = await supabase
         .from('file_uploads')
         .insert({
-          file_name: file.name,
+          file_name: file.name.slice(0, 255), // Limit filename length
           file_type: fileType as any,
           file_business_date: businessDate
             ? format(businessDate, 'yyyy-MM-dd')
@@ -61,8 +81,7 @@ export function useFileUpload() {
 
       if (fileError) throw fileError;
 
-      setUploadProgress({ stage: 'uploading', message: 'Processing units...', progress: 60 });
-
+      // Process in batches
       const batchSize = 100;
 
       for (let i = 0; i < units.length; i += batchSize) {
@@ -159,7 +178,7 @@ export function useFileUpload() {
               wm_week: u.wmWeek,
               wm_day_of_week: u.wmDayOfWeek,
 
-              // INVOICED FEES (columns that exist in schema)
+              // Invoiced fees
               invoiced_check_in_fee: u.invoicedCheckInFee,
               invoiced_refurb_fee: u.invoicedRefurbFee,
               invoiced_overbox_fee: u.invoicedOverboxFee,
@@ -172,44 +191,58 @@ export function useFileUpload() {
               invoiced_marketing_fee: u.invoicedMarketingFee,
               invoiced_refund_fee: u.invoicedRefundFee,
 
-              // CALCULATED CHECK-IN FEE (only column that exists)
-              calculated_check_in_fee: u.checkInFee,
+              // Invoice totals
+              service_invoice_total: u.serviceInvoiceTotal,
+              vendor_invoice_total: u.vendorInvoiceTotal,
+              expected_hv_as_is_refurb_fee: u.expectedHvAsIsRefurbFee,
 
-              // Expected fee from CSV
-              expected_hv_as_is_refurb_fee: u.refurbishingFee,
-
-              b2c_auction: u.b2cAuction || null,
-              sorting_index: u.sortingIndex || null,
+              // Additional fields
+              sorting_index: u.sortingIndex,
+              b2c_auction: u.b2cAuction,
               tag_ebay_auction_sale: u.tagEbayAuctionSale,
+              tag_pricing_condition: u.tagPricingCondition,
+              
+              // Calculated check-in fee
+              calculated_check_in_fee: u.invoicedCheckInFee,
             }));
 
-          if (salesRecords.length) {
+          if (salesRecords.length > 0) {
             await supabase.from('sales_metrics').upsert(salesRecords, { onConflict: 'trgid' });
           }
         }
+
+        // Update progress
+        const progress = Math.min(40 + Math.round((i / units.length) * 55), 95);
+        setUploadProgress({
+          stage: 'uploading',
+          message: `Processing batch ${Math.floor(i / batchSize) + 1}...`,
+          progress,
+        });
       }
 
-      await supabase.from('file_uploads').update({ processed: true }).eq('id', fileUpload.id);
+      // Mark file as processed
+      await supabase
+        .from('file_uploads')
+        .update({ processed: true })
+        .eq('id', fileUpload.id);
 
       setUploadProgress({ stage: 'complete', message: 'Upload complete!', progress: 100 });
-
       toast({
-        title: 'Success',
-        description: `Uploaded ${units.length} units from ${file.name}`,
+        title: 'Upload Successful',
+        description: `Processed ${units.length.toLocaleString()} records from ${file.name}`,
       });
 
       return { success: true };
     } catch (error) {
-      console.error(error);
+      setUploadProgress({ stage: 'error', message: 'Upload failed', progress: 0 });
       toast({
         title: 'Upload Failed',
-        description: error instanceof Error ? error.message : 'Upload failed',
+        description: 'Invalid file format or data.',
         variant: 'destructive',
       });
       return { success: false };
     } finally {
       setIsUploading(false);
-      setTimeout(() => setUploadProgress(null), 3000);
     }
   }, [toast]);
 

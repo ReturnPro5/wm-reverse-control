@@ -55,13 +55,56 @@ export interface ParsedUnit {
   sortingIndex: string;
   b2cAuction: string;
   tagEbayAuctionSale: boolean;
+  tagPricingCondition: string;
 }
 
-function parseNumber(value: string): number | null {
+// Parse a number safely with bounds checking
+function parseNumber(value: string, min = -1000000, max = 1000000): number | null {
   if (!value) return null;
   const cleaned = value.replace(/[,$]/g, '').trim();
   const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
+  if (isNaN(num)) return null;
+  // Bounds checking to prevent unreasonable values
+  if (num < min || num > max) return null;
+  return num;
+}
+
+// Parse CSV line properly handling quoted fields
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+// Sanitize text fields to prevent injection and limit size
+function sanitizeText(text: string | null, maxLength = 500): string {
+  if (!text) return '';
+  return text.trim().slice(0, maxLength);
+}
+
+// Parse date safely
+function parseDate(value: string): Date | null {
+  if (!value || value.trim() === '') return null;
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return null;
+  // Basic sanity check for reasonable dates (1990-2100)
+  const year = date.getFullYear();
+  if (year < 1990 || year > 2100) return null;
+  return date;
 }
 
 export function parseCSV(content: string, fileName: string) {
@@ -71,7 +114,8 @@ export function parseCSV(content: string, fileName: string) {
   const fileType = determineFileType(fileName);
   const businessDate = parseFileBusinessDate(fileName);
 
-  const headers = lines[0].split(',').map(h => h.trim());
+  // Parse headers properly
+  const headers = parseCSVLine(lines[0]);
   const headerIndex: Record<string, number> = {};
   headers.forEach((h, i) => (headerIndex[h] = i));
 
@@ -81,12 +125,17 @@ export function parseCSV(content: string, fileName: string) {
   const units: ParsedUnit[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const row = lines[i].split(',');
-    const trgid = getValue(row, 'TRGID');
-    if (!trgid) continue;
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const row = parseCSVLine(line);
+    const trgid = sanitizeText(getValue(row, 'TRGID'), 50);
+    
+    // Validate TRGID format (should be numeric)
+    if (!trgid || !/^\d+$/.test(trgid)) continue;
 
-    const salePrice = parseNumber(getValue(row, 'Sale Price (Discount applied)'));
-    const refundAmount = parseNumber(getValue(row, 'RefundedSalePriceCalculated'));
+    const salePrice = parseNumber(getValue(row, 'Sale Price (Discount applied)'), 0, 1000000);
+    const refundAmount = parseNumber(getValue(row, 'RefundedSalePriceCalculated'), 0, 1000000);
 
     const invoicedCheckInFee =
       parseNumber(getValue(row, 'CheckInFeeInvoiced')) ??
@@ -94,25 +143,33 @@ export function parseCSV(content: string, fileName: string) {
       parseNumber(getValue(row, 'InvoicedCheckInFee')) ??
       parseNumber(getValue(row, 'Invoiced Check In Fee'));
 
+    const orderClosedDateStr = getValue(row, 'OrderClosedDate') || getValue(row, 'Order Closed Date');
+    const orderClosedDate = parseDate(orderClosedDateStr);
+    
+    const receivedOnStr = getValue(row, 'ReceivedOn') || getValue(row, 'Received On');
+    const checkedInOnStr = getValue(row, 'CheckedInOn') || getValue(row, 'Checked In On');
+    const testedOnStr = getValue(row, 'TestedOn') || getValue(row, 'Tested On');
+    const firstListedDateStr = getValue(row, 'FirstListedDate') || getValue(row, 'First Listed Date');
+
     const unit: ParsedUnit = {
       trgid,
-      programName: getValue(row, 'ProgramName'),
-      masterProgramName: getValue(row, 'Master Program Name'),
-      upc: getValue(row, 'UPC'),
-      categoryName: getValue(row, 'CategoryName'),
-      title: getValue(row, 'Title'),
-      productStatus: getValue(row, 'ProductStatus'),
-      upcRetail: parseNumber(getValue(row, 'UPCRetail')),
-      mrLmrUpcAverageCategoryRetail: parseNumber(getValue(row, 'MR_LMR_UPC_AverageCategoryRetail')),
-      effectiveRetail: null,
-      checkedInOn: null,
-      testedOn: null,
-      receivedOn: null,
-      firstListedDate: null,
-      orderClosedDate: null,
+      programName: sanitizeText(getValue(row, 'ProgramName'), 200),
+      masterProgramName: sanitizeText(getValue(row, 'Master Program Name'), 200),
+      upc: sanitizeText(getValue(row, 'UPC'), 50),
+      categoryName: sanitizeText(getValue(row, 'CategoryName'), 200),
+      title: sanitizeText(getValue(row, 'Title'), 500),
+      productStatus: sanitizeText(getValue(row, 'ProductStatus'), 100),
+      upcRetail: parseNumber(getValue(row, 'UPCRetail'), 0, 100000),
+      mrLmrUpcAverageCategoryRetail: parseNumber(getValue(row, 'MR_LMR_UPC_AverageCategoryRetail'), 0, 100000),
+      effectiveRetail: parseNumber(getValue(row, 'EffectiveRetail') || getValue(row, 'Effective Retail'), 0, 100000),
+      checkedInOn: parseDate(checkedInOnStr),
+      testedOn: parseDate(testedOnStr),
+      receivedOn: parseDate(receivedOnStr),
+      firstListedDate: parseDate(firstListedDateStr),
+      orderClosedDate,
       salePrice,
-      discountAmount: null,
-      grossSale: salePrice,
+      discountAmount: parseNumber(getValue(row, 'Discount Amount') || getValue(row, 'DiscountAmount'), 0, 100000),
+      grossSale: parseNumber(getValue(row, 'Gross Sale') || getValue(row, 'GrossSale'), 0, 1000000) ?? salePrice,
       refundAmount,
       isRefunded: !!refundAmount && refundAmount > 0,
       checkInFee: null,
@@ -121,32 +178,35 @@ export function parseCSV(content: string, fileName: string) {
       refurbishingFee: null,
       marketplaceFee: null,
       totalFees: null,
-      marketplaceProfileSoldOn: getValue(row, 'Marketplace Profile Sold On'),
-      facility: getValue(row, 'Tag_Facility'),
-      locationId: getValue(row, 'LocationID'),
-      tagClientOwnership: getValue(row, 'Tag_Ownership'),
-      tagClientSource: getValue(row, 'Tag_ClientSource'),
-      wmWeek: null,
-      wmDayOfWeek: null,
-      currentStage: null,
+      marketplaceProfileSoldOn: sanitizeText(getValue(row, 'Marketplace Profile Sold On'), 200),
+      facility: sanitizeText(getValue(row, 'Tag_Facility'), 100),
+      locationId: sanitizeText(getValue(row, 'LocationID'), 100),
+      tagClientOwnership: sanitizeText(getValue(row, 'Tag_Ownership'), 100),
+      tagClientSource: sanitizeText(getValue(row, 'Tag_ClientSource'), 100),
+      wmWeek: orderClosedDate ? getWMWeekNumber(orderClosedDate) : null,
+      wmDayOfWeek: orderClosedDate ? getWMDayOfWeek(orderClosedDate) : null,
+      currentStage: orderClosedDate ? 'Sold' : null,
 
       invoicedCheckInFee,
-      invoicedRefurbFee: null,
-      invoicedOverboxFee: null,
-      invoicedPackagingFee: null,
-      invoicedPpsFee: null,
-      invoicedShippingFee: null,
-      invoicedMerchantFee: null,
-      invoiced3pmpFee: null,
-      invoicedRevshareFee: null,
-      invoicedMarketingFee: null,
-      invoicedRefundFee: null,
-      serviceInvoiceTotal: null,
-      vendorInvoiceTotal: null,
-      expectedHvAsIsRefurbFee: null,
-      sortingIndex: '',
-      b2cAuction: '',
-      tagEbayAuctionSale: false,
+      invoicedRefurbFee: parseNumber(getValue(row, 'RefurbFeeInvoiced') || getValue(row, 'Invoiced_RefurbFee')),
+      invoicedOverboxFee: parseNumber(getValue(row, 'OverboxFeeInvoiced') || getValue(row, 'Invoiced_OverboxFee')),
+      invoicedPackagingFee: parseNumber(getValue(row, 'PackagingFeeInvoiced') || getValue(row, 'Invoiced_PackagingFee')),
+      invoicedPpsFee: parseNumber(getValue(row, 'PPSFeeInvoiced') || getValue(row, 'Invoiced_PPSFee')),
+      invoicedShippingFee: parseNumber(getValue(row, 'ShippingFeeInvoiced') || getValue(row, 'Invoiced_ShippingFee')),
+      invoicedMerchantFee: parseNumber(getValue(row, 'MerchantFeeInvoiced') || getValue(row, 'Invoiced_MerchantFee')),
+      invoiced3pmpFee: parseNumber(getValue(row, '3PMPFeeInvoiced') || getValue(row, 'Invoiced_3PMPFee')),
+      invoicedRevshareFee: parseNumber(getValue(row, 'RevshareFeeInvoiced') || getValue(row, 'Invoiced_RevshareFee')),
+      invoicedMarketingFee: parseNumber(getValue(row, 'MarketingFeeInvoiced') || getValue(row, 'Invoiced_MarketingFee')),
+      invoicedRefundFee: parseNumber(getValue(row, 'RefundFeeInvoiced') || getValue(row, 'Invoiced_RefundFee')),
+
+      serviceInvoiceTotal: parseNumber(getValue(row, 'ServiceInvoiceTotal') || getValue(row, 'Service Invoice Total')),
+      vendorInvoiceTotal: parseNumber(getValue(row, 'VendorInvoiceTotal') || getValue(row, 'Vendor Invoice Total')),
+      expectedHvAsIsRefurbFee: parseNumber(getValue(row, 'ExpectedHVAsIsRefurbFee') || getValue(row, 'Expected HV As-Is Refurb Fee')),
+
+      sortingIndex: sanitizeText(getValue(row, 'SortingIndex'), 100),
+      b2cAuction: sanitizeText(getValue(row, 'B2CAuction') || getValue(row, 'B2C Auction'), 100),
+      tagEbayAuctionSale: getValue(row, 'Tag_EbayAuctionSale')?.toLowerCase() === 'true',
+      tagPricingCondition: sanitizeText(getValue(row, 'Tag_PricingCondition'), 100),
     };
 
     units.push(unit);

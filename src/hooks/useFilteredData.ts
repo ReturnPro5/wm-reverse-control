@@ -1,49 +1,35 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMemo } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useTabFilters, TabFilters, TabName } from '@/contexts/FilterContext';
-import { Tables } from '@/integrations/supabase/types';
-import { getWMWeekNumber } from '@/lib/wmWeek';
-import { useMemo } from 'react';
+import { useTabFilters, TabName, FilterState } from '@/contexts/FilterContext';
+import { Database } from '@/integrations/supabase/types';
 
-// Create a stable filter key for React Query that only changes when filter values actually change
-function createFilterKey(filters: TabFilters) {
+type SalesMetric = Database['public']['Tables']['sales_metrics']['Row'];
+type FeeMetric = Database['public']['Tables']['fee_metrics']['Row'];
+type LifecycleEvent = Database['public']['Tables']['lifecycle_events']['Row'];
+type FileUpload = Database['public']['Tables']['file_uploads']['Row'];
+type UnitCanonical = Database['public']['Tables']['units_canonical']['Row'];
+
+// Helper to create a stable key for query invalidation
+function createFilterKey(filters: FilterState): string {
   return JSON.stringify({
-    wmWeeks: filters.wmWeeks,
-    wmDaysOfWeek: filters.wmDaysOfWeek,
-    programNames: filters.programNames,
-    masterProgramNames: filters.masterProgramNames,
-    categoryNames: filters.categoryNames,
-    facilities: filters.facilities,
-    locationIds: filters.locationIds,
-    tagClientOwnerships: filters.tagClientOwnerships,
-    tagClientSources: filters.tagClientSources,
-    marketplacesSoldOn: filters.marketplacesSoldOn,
-    excludedFileIds: filters.excludedFileIds,
-    fileTypes: filters.fileTypes,
+    weeks: filters.wmWeeks.sort(),
+    days: filters.wmDaysOfWeek.sort(),
+    programs: filters.programNames.sort(),
+    facilities: filters.facilities.sort(),
+    marketplaces: filters.marketplaces.sort(),
+    clientSources: filters.clientSources.sort(),
+    excludedFiles: filters.excludedFileIds.sort(),
+    fileTypes: filters.fileTypes.sort(),
   });
 }
 
-// Calculate WM week from a date string (YYYY-MM-DD)
-function getWMWeekFromDateString(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const date = new Date(year, month - 1, day, 12, 0, 0);
-  return getWMWeekNumber(date);
-}
-
-// Build a Supabase query with all global filters applied (multi-select arrays)
-// NOTE: This does NOT apply wmWeeks filter - that's handled per-date-field for lifecycle
-function applyFilters<T extends { eq: any; not: any; in: any }>(
-  query: T,
-  filters: TabFilters,
-  options: { skipWmWeeks?: boolean } = {},
-): T {
-  // Data filters - use .in() for arrays
-  if (!options.skipWmWeeks && filters.wmWeeks.length > 0) {
+// Apply common filters to a query
+function applyFilters<T extends { wm_week?: number | null; program_name?: string | null; facility?: string | null; marketplace_profile_sold_on?: string | null; tag_clientsource?: string | null }>(
+  query: any,
+  filters: FilterState
+) {
+  if (filters.wmWeeks.length > 0) {
     query = query.in('wm_week', filters.wmWeeks);
-  }
-  if (filters.wmDaysOfWeek.length > 0) {
-    query = query.in('wm_day_of_week', filters.wmDaysOfWeek);
   }
   if (filters.programNames.length > 0) {
     query = query.in('program_name', filters.programNames);
@@ -51,251 +37,163 @@ function applyFilters<T extends { eq: any; not: any; in: any }>(
   if (filters.facilities.length > 0) {
     query = query.in('facility', filters.facilities);
   }
-  if (filters.categoryNames.length > 0) {
-    query = query.in('category_name', filters.categoryNames);
+  if (filters.marketplaces.length > 0) {
+    query = query.in('marketplace_profile_sold_on', filters.marketplaces);
   }
-  if (filters.tagClientOwnerships.length > 0) {
-    query = query.in('tag_client_ownership', filters.tagClientOwnerships);
+  if (filters.clientSources.length > 0) {
+    query = query.in('tag_clientsource', filters.clientSources);
   }
-  // WMUS exclusive - always filter to WMUS only, ignore tagClientSources filter
-  query = query.eq('tag_clientsource', 'WMUS');
-  if (filters.marketplacesSoldOn.length > 0) {
-    query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
-  }
-  if (filters.locationIds.length > 0) {
-    query = query.in('location_id', filters.locationIds);
-  }
-  
   return query;
 }
 
-// Filter results client-side for excluded files
+// Filter out excluded file IDs from results
 function filterExcludedFiles<T extends { file_upload_id?: string | null }>(
   data: T[] | null,
   excludedFileIds: string[]
 ): T[] {
   if (!data) return [];
   if (excludedFileIds.length === 0) return data;
-  return data.filter(row => !row.file_upload_id || !excludedFileIds.includes(row.file_upload_id));
+  return data.filter(item => !excludedFileIds.includes(item.file_upload_id || ''));
 }
 
-// Filter out "owned" programs from sales data (master_program_name contains "owned")
-function filterOwnedPrograms<T extends { master_program_name?: string | null }>(
+// Filter out "owned" programs (programs containing "owned" in the name)
+function filterOwnedPrograms<T extends { program_name?: string | null }>(
   data: T[]
 ): T[] {
-  return data.filter(row => {
-    const masterProgram = row.master_program_name?.toLowerCase() || '';
-    return !masterProgram.includes('owned');
+  return data.filter(item => {
+    const programName = item.program_name?.toLowerCase() || '';
+    return !programName.includes('owned');
   });
 }
 
-// Helper to fetch all distinct values from a column with pagination
-async function fetchAllDistinctValues(
-  table: 'units_canonical' | 'sales_metrics' | 'file_uploads',
-  column: string
-): Promise<string[]> {
-  const allValues = new Set<string>();
-  let offset = 0;
-  const batchSize = 1000;
-  
-  while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(column)
-      .not(column, 'is', null)
-      .range(offset, offset + batchSize - 1);
-    
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    
-    data.forEach((row: any) => {
-      if (row[column]) allValues.add(row[column]);
-    });
-    
-    if (data.length < batchSize) break;
-    offset += batchSize;
-  }
-  
-  return Array.from(allValues);
-}
+// ===================================
+// FILTER OPTIONS HOOKS
+// ===================================
 
-export function useFilterOptions() {
+export function useWMWeekOptions() {
   return useQuery({
-    queryKey: ['filter-options-global'],
+    queryKey: ['wm-week-options'],
     queryFn: async () => {
-      const [
-        programs,
-        masterPrograms,
-        categories,
-        facilities,
-        locations,
-        ownerships,
-        clientSources,
-        marketplaces,
-        fileTypes,
-      ] = await Promise.all([
-        fetchAllDistinctValues('units_canonical', 'program_name'),
-        fetchAllDistinctValues('units_canonical', 'master_program_name'),
-        fetchAllDistinctValues('units_canonical', 'category_name'),
-        fetchAllDistinctValues('units_canonical', 'facility'),
-        fetchAllDistinctValues('units_canonical', 'location_id'),
-        fetchAllDistinctValues('units_canonical', 'tag_client_ownership'),
-        fetchAllDistinctValues('units_canonical', 'tag_clientsource'),
-        fetchAllDistinctValues('sales_metrics', 'marketplace_profile_sold_on'),
-        fetchAllDistinctValues('file_uploads', 'file_type'),
-      ]);
-
-      return {
-        programs,
-        masterPrograms,
-        categories,
-        facilities,
-        locations,
-        ownerships,
-        clientSources,
-        marketplaces,
-        fileTypes,
-      };
+      const { data, error } = await supabase
+        .from('sales_metrics')
+        .select('wm_week')
+        .not('wm_week', 'is', null)
+        .order('wm_week', { ascending: false });
+      
+      if (error) throw error;
+      
+      const uniqueWeeks = [...new Set(data?.map(r => r.wm_week).filter(Boolean) as number[])];
+      return uniqueWeeks.sort((a, b) => b - a);
     },
-    staleTime: 60000,
   });
 }
 
-export function useFilteredLifecycle(tabName: TabName = 'inbound') {
+export function useProgramNameOptions() {
+  return useQuery({
+    queryKey: ['program-name-options'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sales_metrics')
+        .select('program_name')
+        .not('program_name', 'is', null);
+      
+      if (error) throw error;
+      
+      const uniquePrograms = [...new Set(data?.map(r => r.program_name).filter(Boolean) as string[])];
+      return uniquePrograms.sort();
+    },
+  });
+}
+
+export function useFacilityOptions() {
+  return useQuery({
+    queryKey: ['facility-options'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sales_metrics')
+        .select('facility')
+        .not('facility', 'is', null);
+      
+      if (error) throw error;
+      
+      const uniqueFacilities = [...new Set(data?.map(r => r.facility).filter(Boolean) as string[])];
+      return uniqueFacilities.sort();
+    },
+  });
+}
+
+export function useMarketplaceOptions() {
+  return useQuery({
+    queryKey: ['marketplace-options'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sales_metrics')
+        .select('marketplace_profile_sold_on')
+        .not('marketplace_profile_sold_on', 'is', null);
+      
+      if (error) throw error;
+      
+      const uniqueMarketplaces = [...new Set(data?.map(r => r.marketplace_profile_sold_on).filter(Boolean) as string[])];
+      return uniqueMarketplaces.sort();
+    },
+  });
+}
+
+export function useClientSourceOptions() {
+  return useQuery({
+    queryKey: ['client-source-options'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sales_metrics')
+        .select('tag_clientsource')
+        .not('tag_clientsource', 'is', null);
+      
+      if (error) throw error;
+      
+      const uniqueSources = [...new Set(data?.map(r => r.tag_clientsource).filter(Boolean) as string[])];
+      return uniqueSources.sort();
+    },
+  });
+}
+
+// ===================================
+// DATA HOOKS
+// ===================================
+
+export function useFilteredUnits(tabName: TabName = 'inbound') {
   const { filters } = useTabFilters(tabName);
   const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
-    queryKey: ['filtered-lifecycle-inbound-only', tabName, filterKey],
-    staleTime: 0,
+    queryKey: ['filtered-units', tabName, filterKey],
     queryFn: async () => {
-      // ALWAYS get only Inbound file IDs - lifecycle funnel is ONLY for Inbound files
-      const { data: inboundFiles, error: filesError } = await supabase
-        .from('file_uploads')
-        .select('id')
-        .eq('file_type', 'Inbound');
+      let query = supabase.from('units_canonical').select('*');
+      query = applyFilters(query, filters);
       
-      if (filesError) throw filesError;
-      const inboundFileIds = inboundFiles?.map(f => f.id) || [];
-      
-      // Filter out excluded files from inbound file IDs
-      const activeInboundFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
-      
-      // Fetch units_canonical ONLY from Inbound files - WITHOUT wm_week filter at DB level
-      // We'll calculate WM week per stage date client-side
-      type UnitRow = { 
-        trgid: string; 
-        received_on: string | null; 
-        checked_in_on: string | null; 
-        tested_on: string | null; 
-        first_listed_date: string | null; 
-        order_closed_date: string | null; 
-        file_upload_id: string | null;
-        tag_clientsource: string | null;
-      };
-      const unitsData: UnitRow[] = [];
-      let offset = 0;
-      const batchSize = 1000;
-      
-      if (activeInboundFileIds.length > 0) {
-        while (true) {
-          let query = supabase
-            .from('units_canonical')
-            .select('trgid, received_on, checked_in_on, tested_on, first_listed_date, order_closed_date, file_upload_id, tag_clientsource')
-            .in('file_upload_id', activeInboundFileIds)
-            .order('trgid', { ascending: true }); // Consistent ordering for pagination
-          
-          // Apply filters EXCEPT wmWeeks - we handle that per-stage-date
-          query = applyFilters(query, filters, { skipWmWeeks: true });
-          query = query.range(offset, offset + batchSize - 1);
-          
-          const { data, error } = await query;
-          if (error) throw error;
-          if (!data || data.length === 0) break;
-          
-          unitsData.push(...data);
-          if (data.length < batchSize) break;
-          offset += batchSize;
-        }
+      if (filters.wmDaysOfWeek.length > 0) {
+        query = query.in('wm_day_of_week', filters.wmDaysOfWeek);
       }
       
-      const filteredUnits = filterExcludedFiles(unitsData, filters.excludedFileIds);
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (error) throw error;
       
-      // For each stage, dedupe by trgid and filter by WM week of that stage's date
-      const selectedWeeks = filters.wmWeeks;
-      const hasWeekFilter = selectedWeeks.length > 0;
-      
-      // Helper: check if a date matches the week filter
-      const matchesWeekFilter = (dateStr: string | null): boolean => {
-        if (!hasWeekFilter) return true; // No filter = include all
-        if (!dateStr) return false; // No date = can't match
-        const wmWeek = getWMWeekFromDateString(dateStr);
-        return wmWeek !== null && selectedWeeks.includes(wmWeek);
-      };
-      
-      // Deduplicate by trgid for each stage, filtered by that stage's date week
-      const receivedTrgids = new Set<string>();
-      const checkedInTrgids = new Set<string>();
-      const testedTrgids = new Set<string>();
-      const listedTrgids = new Set<string>();
-      const soldTrgids = new Set<string>();
-      
-      filteredUnits.forEach(unit => {
-        // Each stage checks if its own date matches the week filter
-        if (unit.received_on && matchesWeekFilter(unit.received_on)) {
-          receivedTrgids.add(unit.trgid);
-        }
-        if (unit.checked_in_on && matchesWeekFilter(unit.checked_in_on)) {
-          checkedInTrgids.add(unit.trgid);
-        }
-        if (unit.tested_on && matchesWeekFilter(unit.tested_on)) {
-          testedTrgids.add(unit.trgid);
-        }
-        if (unit.first_listed_date && matchesWeekFilter(unit.first_listed_date)) {
-          listedTrgids.add(unit.trgid);
-        }
-        if (unit.order_closed_date && matchesWeekFilter(unit.order_closed_date)) {
-          soldTrgids.add(unit.trgid);
-        }
-      });
-      
-      const counts: Record<string, number> = {
-        Received: receivedTrgids.size,
-        CheckedIn: checkedInTrgids.size,
-        Tested: testedTrgids.size,
-        Listed: listedTrgids.size,
-        Sold: soldTrgids.size,
-      };
-
-      const total = Object.values(counts).reduce((a, b) => a + b, 0);
-      
-      return Object.entries(counts).map(([stage, count]) => ({
-        stage,
-        count,
-        percentage: total > 0 ? (count / total) * 100 : 0,
-      }));
+      const filteredByFiles = filterExcludedFiles(data, filters.excludedFileIds);
+      return filterOwnedPrograms(filteredByFiles);
     },
   });
 }
 
 export function useFilteredSales(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
-  
-  // Create a stable filter key that only changes when THIS tab's filters change
   const filterKey = useMemo(() => createFilterKey(filters), [filters]);
 
   return useQuery({
-    // Include tabName in queryKey to ensure complete isolation between tabs
     queryKey: ['filtered-sales', tabName, filterKey],
-    staleTime: 30000, // Cache for 30 seconds
-    gcTime: 60000, // Keep in cache for 1 minute
-    refetchOnWindowFocus: false,
-    refetchOnMount: false, // Don't refetch when component mounts if data exists
     queryFn: async () => {
-      // Fetch all records using pagination to bypass 1000 row limit
-      const allData: Tables<'sales_metrics'>[] = [];
-      let from = 0;
+      // Paginate to handle large datasets
       const pageSize = 1000;
+      let from = 0;
+      const allData: SalesMetric[] = [];
       
       while (true) {
         let query = supabase.from('sales_metrics').select('*');
@@ -315,14 +213,9 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         from += pageSize;
       }
       
-      console.log(`[useFilteredSales:${tabName}] Fetched ${allData.length} records for weeks:`, filters.wmWeeks.length > 0 ? filters.wmWeeks : 'ALL');
-      
       // Filter out excluded files and "owned" programs
       const filteredByFiles = filterExcludedFiles(allData, filters.excludedFileIds);
       const result = filterOwnedPrograms(filteredByFiles);
-      
-      const totalGross = result.reduce((sum, r) => sum + (Number(r.gross_sale) || 0), 0);
-      console.log(`[useFilteredSales:${tabName}] After filters: ${result.length} records, $${(totalGross / 1000000).toFixed(2)}M gross`);
       
       return result;
     },
@@ -398,75 +291,84 @@ export function useFileUploads(tabName: TabName = 'inbound') {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      return data || [];
     },
   });
 }
 
-export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
-  const { filters } = useTabFilters(tabName);
-  const filterKey = useMemo(() => createFilterKey(filters), [filters]);
+// ===================================
+// SUMMARY HOOKS
+// ===================================
 
-  return useQuery({
-    queryKey: ['filtered-weekly-trends', tabName, filterKey],
-    queryFn: async () => {
-      // Fetch all records using pagination
-      type TrendRow = { wm_week: number | null; gross_sale: number; effective_retail: number | null; file_upload_id: string | null; master_program_name: string | null };
-      const allData: TrendRow[] = [];
-      let from = 0;
-      const pageSize = 1000;
-      
-      while (true) {
-        let query = supabase
-          .from('sales_metrics')
-          .select('wm_week, gross_sale, effective_retail, file_upload_id, tag_clientsource, master_program_name')
-          .not('wm_week', 'is', null)
-          .eq('tag_clientsource', 'WMUS'); // WMUS exclusive
-        
-        if (filters.programNames.length > 0) {
-          query = query.in('program_name', filters.programNames);
-        }
-        if (filters.facilities.length > 0) {
-          query = query.in('facility', filters.facilities);
-        }
-        
-        query = query.range(from, from + pageSize - 1).order('wm_week', { ascending: true });
-        
-        const { data, error } = await query;
-        if (error) throw error;
-        
-        if (!data || data.length === 0) break;
-        allData.push(...data);
-        
-        if (data.length < pageSize) break;
-        from += pageSize;
+export function useSalesSummary(tabName: TabName = 'sales') {
+  const { data: sales, isLoading } = useFilteredSales(tabName);
+
+  return useMemo(() => {
+    if (!sales || isLoading) {
+      return {
+        totalUnits: 0,
+        totalGrossSales: 0,
+        averageSalePrice: 0,
+        isLoading,
+      };
+    }
+
+    const totalUnits = sales.length;
+    const totalGrossSales = sales.reduce((sum, s) => sum + (Number(s.gross_sale) || 0), 0);
+    const averageSalePrice = totalUnits > 0 ? totalGrossSales / totalUnits : 0;
+
+    return {
+      totalUnits,
+      totalGrossSales,
+      averageSalePrice,
+      isLoading,
+    };
+  }, [sales, isLoading]);
+}
+
+export function useLifecycleSummary(tabName: TabName = 'inbound') {
+  const { data: events, isLoading } = useFilteredLifecycleEvents(tabName);
+
+  return useMemo(() => {
+    if (!events || isLoading) {
+      return {
+        received: 0,
+        checkedIn: 0,
+        tested: 0,
+        listed: 0,
+        sold: 0,
+        isLoading,
+      };
+    }
+
+    const counts = {
+      received: 0,
+      checkedIn: 0,
+      tested: 0,
+      listed: 0,
+      sold: 0,
+    };
+
+    for (const event of events) {
+      switch (event.stage) {
+        case 'Received':
+          counts.received++;
+          break;
+        case 'CheckedIn':
+          counts.checkedIn++;
+          break;
+        case 'Tested':
+          counts.tested++;
+          break;
+        case 'Listed':
+          counts.listed++;
+          break;
+        case 'Sold':
+          counts.sold++;
+          break;
       }
+    }
 
-      const filtered = filterExcludedFiles(allData, filters.excludedFileIds);
-      // Also filter out "owned" programs for weekly trends
-      const filteredNoOwned = filterOwnedPrograms(filtered);
-      
-      const weeklyData: Record<number, { grossSales: number; effectiveRetail: number; count: number }> = {};
-      
-      filteredNoOwned.forEach(row => {
-        const week = row.wm_week!;
-        if (!weeklyData[week]) {
-          weeklyData[week] = { grossSales: 0, effectiveRetail: 0, count: 0 };
-        }
-        weeklyData[week].grossSales += Number(row.gross_sale) || 0;
-        weeklyData[week].effectiveRetail += Number(row.effective_retail) || 0;
-        weeklyData[week].count++;
-      });
-
-      return Object.entries(weeklyData)
-        .map(([week, data]) => ({
-          week: parseInt(week),
-          grossSales: data.grossSales,
-          effectiveRetail: data.effectiveRetail,
-          recoveryRate: data.effectiveRetail > 0 ? (data.grossSales / data.effectiveRetail) * 100 : 0,
-          unitsCount: data.count,
-        }))
-        .slice(-12);
-    },
-  });
+    return { ...counts, isLoading };
+  }, [events, isLoading]);
 }
