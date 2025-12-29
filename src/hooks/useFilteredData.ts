@@ -1,6 +1,7 @@
-import { useQuery, useMemo } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useTabFilters, TabName, FilterState } from '@/contexts/FilterContext';
+import { useTabFilters, TabName, TabFilters } from '@/contexts/FilterContext';
 import { Database } from '@/integrations/supabase/types';
 
 type SalesMetric = Database['public']['Tables']['sales_metrics']['Row'];
@@ -10,14 +11,14 @@ type FileUpload = Database['public']['Tables']['file_uploads']['Row'];
 type UnitCanonical = Database['public']['Tables']['units_canonical']['Row'];
 
 // Helper to create a stable key for query invalidation
-function createFilterKey(filters: FilterState): string {
+function createFilterKey(filters: TabFilters): string {
   return JSON.stringify({
     weeks: filters.wmWeeks.sort(),
     days: filters.wmDaysOfWeek.sort(),
     programs: filters.programNames.sort(),
     facilities: filters.facilities.sort(),
-    marketplaces: filters.marketplaces.sort(),
-    clientSources: filters.clientSources.sort(),
+    marketplaces: filters.marketplacesSoldOn.sort(),
+    clientSources: filters.tagClientSources.sort(),
     excludedFiles: filters.excludedFileIds.sort(),
     fileTypes: filters.fileTypes.sort(),
   });
@@ -26,7 +27,7 @@ function createFilterKey(filters: FilterState): string {
 // Apply common filters to a query
 function applyFilters<T extends { wm_week?: number | null; program_name?: string | null; facility?: string | null; marketplace_profile_sold_on?: string | null; tag_clientsource?: string | null }>(
   query: any,
-  filters: FilterState
+  filters: TabFilters
 ) {
   if (filters.wmWeeks.length > 0) {
     query = query.in('wm_week', filters.wmWeeks);
@@ -37,11 +38,11 @@ function applyFilters<T extends { wm_week?: number | null; program_name?: string
   if (filters.facilities.length > 0) {
     query = query.in('facility', filters.facilities);
   }
-  if (filters.marketplaces.length > 0) {
-    query = query.in('marketplace_profile_sold_on', filters.marketplaces);
+  if (filters.marketplacesSoldOn.length > 0) {
+    query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
   }
-  if (filters.clientSources.length > 0) {
-    query = query.in('tag_clientsource', filters.clientSources);
+  if (filters.tagClientSources.length > 0) {
+    query = query.in('tag_clientsource', filters.tagClientSources);
   }
   return query;
 }
@@ -371,4 +372,105 @@ export function useLifecycleSummary(tabName: TabName = 'inbound') {
 
     return { ...counts, isLoading };
   }, [events, isLoading]);
+}
+
+// ===================================
+// LEGACY ALIAS EXPORTS FOR BACKWARDS COMPATIBILITY
+// ===================================
+
+// useFilterOptions - aggregates all filter options into a single object
+export function useFilterOptions() {
+  const { data: programs } = useProgramNameOptions();
+  const { data: facilities } = useFacilityOptions();
+  const { data: marketplaces } = useMarketplaceOptions();
+  const { data: clientSources } = useClientSourceOptions();
+  const { data: wmWeeks } = useWMWeekOptions();
+
+  return useQuery({
+    queryKey: ['filter-options-combined', programs, facilities, marketplaces, clientSources, wmWeeks],
+    queryFn: async () => ({
+      programs: programs || [],
+      masterPrograms: [],
+      categories: [],
+      facilities: facilities || [],
+      locations: [],
+      ownerships: [],
+      clientSources: clientSources || [],
+      marketplaces: marketplaces || [],
+      fileTypes: ['Sales', 'Inbound', 'Outbound', 'Production', 'Inventory'],
+    }),
+    enabled: true,
+  });
+}
+
+// useFilteredLifecycle - alias for useFilteredLifecycleEvents
+export function useFilteredLifecycle(tabName: TabName = 'inbound') {
+  const { data, ...rest } = useFilteredLifecycleEvents(tabName);
+  
+  // Transform lifecycle events into funnel format with percentage
+  const funnelData = useMemo(() => {
+    if (!data) return [];
+    
+    const counts: Record<string, number> = {
+      Received: 0,
+      CheckedIn: 0,
+      Tested: 0,
+      Listed: 0,
+      Sold: 0,
+    };
+    
+    for (const event of data) {
+      if (counts[event.stage] !== undefined) {
+        counts[event.stage]++;
+      }
+    }
+    
+    const receivedCount = counts.Received || 1;
+    
+    return [
+      { stage: 'Received', count: counts.Received, percentage: 100 },
+      { stage: 'Checked In', count: counts.CheckedIn, percentage: (counts.CheckedIn / receivedCount) * 100 },
+      { stage: 'Tested', count: counts.Tested, percentage: (counts.Tested / receivedCount) * 100 },
+      { stage: 'Listed', count: counts.Listed, percentage: (counts.Listed / receivedCount) * 100 },
+      { stage: 'Sold', count: counts.Sold, percentage: (counts.Sold / receivedCount) * 100 },
+    ];
+  }, [data]);
+  
+  return { data: funnelData, ...rest };
+}
+
+// useFilteredWeeklyTrends - aggregates sales by week for trend charts
+export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
+  const { data: sales, ...rest } = useFilteredSales(tabName);
+  
+  const trendData = useMemo(() => {
+    if (!sales) return [];
+    
+    const weeklyMap: Record<number, { week: number; grossSales: number; units: number; effectiveRetail: number }> = {};
+    
+    for (const sale of sales) {
+      const week = sale.wm_week;
+      if (!week) continue;
+      
+      if (!weeklyMap[week]) {
+        weeklyMap[week] = { week, grossSales: 0, units: 0, effectiveRetail: 0 };
+      }
+      
+      weeklyMap[week].grossSales += Number(sale.gross_sale) || 0;
+      weeklyMap[week].units++;
+      weeklyMap[week].effectiveRetail += Number(sale.effective_retail) || 0;
+    }
+    
+    return Object.values(weeklyMap)
+      .map(w => ({
+        week: w.week,
+        grossSales: w.grossSales,
+        recoveryRate: w.effectiveRetail > 0 ? (w.grossSales / w.effectiveRetail) * 100 : 0,
+        unitsCount: w.units,
+      }))
+      .sort((a, b) => a.week - b.week)
+      .slice(-8);
+  }, [sales]);
+  
+  return { data: trendData, ...rest };
 }

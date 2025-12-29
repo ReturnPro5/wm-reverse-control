@@ -1,9 +1,9 @@
 // Fee Calculator - Calculates various fees for sales records
 
 export interface SaleRecord {
-  trgid: string;
+  trgid?: string;
   sale_price: number;
-  gross_sale: number;
+  gross_sale?: number;
   effective_retail?: number | null;
   program_name?: string | null;
   master_program_name?: string | null;
@@ -11,6 +11,11 @@ export interface SaleRecord {
   marketplace_profile_sold_on?: string | null;
   facility?: string | null;
   tag_clientsource?: string | null;
+  tag_pricing_condition?: string | null;
+  sorting_index?: string | null;
+  b2c_auction?: string | null;
+  refund_amount?: number | null;
+  discount_amount?: number | null;
   
   // Invoiced fees
   invoiced_check_in_fee?: number | null;
