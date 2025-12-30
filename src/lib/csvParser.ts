@@ -130,10 +130,10 @@ export function parseCSV(content: string, fileName: string) {
     if (!line) continue;
     
     const row = parseCSVLine(line);
-    const trgid = sanitizeText(getValue(row, 'TRGID'), 50);
+    const trgid = sanitizeText(getValue(row, 'TRGID'), 50).replace(/[^\d]/g, '');
     
-    // Validate TRGID format (should be numeric)
-    if (!trgid || !/^\d+$/.test(trgid)) continue;
+    // Validate TRGID exists and is not empty after cleaning
+    if (!trgid) continue;
 
     const salePrice = parseNumber(getValue(row, 'Sale Price (Discount applied)'), 0, 1000000);
     const refundAmount = parseNumber(getValue(row, 'RefundedSalePriceCalculated'), 0, 1000000);
