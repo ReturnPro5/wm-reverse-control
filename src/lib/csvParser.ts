@@ -143,7 +143,10 @@ export function parseCSV(content: string, fileName: string) {
       parseNumber(getValue(row, 'InvoicedCheckInFee')) ??
       parseNumber(getValue(row, 'Invoiced Check In Fee'));
 
-    const orderClosedDateStr = getValue(row, 'OrderClosedDate') || getValue(row, 'Order Closed Date');
+    // Try multiple column names for order closed date
+    const orderClosedDateStr = getValue(row, 'OrderClosedDate') || 
+      getValue(row, 'Order Closed Date') || 
+      getValue(row, 'Marketplace Profile Sold On');
     const orderClosedDate = parseDate(orderClosedDateStr);
     
     const receivedOnStr = getValue(row, 'ReceivedOn') || getValue(row, 'Received On');
@@ -178,7 +181,7 @@ export function parseCSV(content: string, fileName: string) {
       refurbishingFee: null,
       marketplaceFee: null,
       totalFees: null,
-      marketplaceProfileSoldOn: sanitizeText(getValue(row, 'Marketplace Profile Sold On'), 200),
+      marketplaceProfileSoldOn: sanitizeText(getValue(row, 'MarketplaceProfileSoldOn') || getValue(row, 'Marketplace'), 200),
       facility: sanitizeText(getValue(row, 'Tag_Facility'), 100),
       locationId: sanitizeText(getValue(row, 'LocationID'), 100),
       tagClientOwnership: sanitizeText(getValue(row, 'Tag_Ownership'), 100),
