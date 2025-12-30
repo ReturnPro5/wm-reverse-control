@@ -1,4 +1,5 @@
 import { getWMWeekNumber, getWMDayOfWeek, determineFileType, parseFileBusinessDate } from './wmWeek';
+import * as XLSX from 'xlsx';
 
 export interface ParsedUnit {
   trgid: string;
@@ -216,4 +217,21 @@ export function parseCSV(content: string, fileName: string) {
   }
 
   return { units, fileType, businessDate };
+}
+
+// Convert Excel file to CSV string
+export async function parseExcelToCSV(arrayBuffer: ArrayBuffer): Promise<string> {
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  
+  // Get the first sheet
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+  
+  // Convert to CSV
+  const csv = XLSX.utils.sheet_to_csv(worksheet, { 
+    blankrows: false,
+    strip: true
+  });
+  
+  return csv;
 }

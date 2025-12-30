@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { parseCSV } from '@/lib/csvParser';
+import { parseCSV, parseExcelToCSV } from '@/lib/csvParser';
 import { format } from 'date-fns';
 import { getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
 
@@ -47,7 +47,17 @@ export function useFileUpload() {
     setUploadProgress({ stage: 'reading', message: 'Reading file...', progress: 10 });
 
     try {
-      const content = await file.text();
+      let content: string;
+      const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
+      
+      if (isExcel) {
+        // Parse Excel file
+        const arrayBuffer = await file.arrayBuffer();
+        content = await parseExcelToCSV(arrayBuffer);
+      } else {
+        // Parse CSV file
+        content = await file.text();
+      }
 
       setUploadProgress({ stage: 'parsing', message: 'Parsing data...', progress: 30 });
 
