@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
 export interface TabFilters {
   // File-level filters
@@ -25,6 +25,18 @@ export interface TabFilters {
 
 export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv';
 
+interface FilterContextType {
+  getTabFilters: (tab: TabName) => TabFilters;
+  setTabFilter: <K extends keyof TabFilters>(tab: TabName, key: K, value: TabFilters[K]) => void;
+  setTabFilters: (tab: TabName, updates: Partial<TabFilters>) => void;
+  resetTabFilters: (tab: TabName) => void;
+  excludeFile: (fileId: string) => void;
+  includeFile: (fileId: string) => void;
+  isFileExcluded: (fileId: string) => boolean;
+  // Global excluded files (persisted)
+  globalExcludedFileIds: string[];
+}
+
 const defaultTabFilters: TabFilters = {
   selectedFileIds: null,
   excludedFileIds: [],
@@ -45,21 +57,6 @@ const defaultTabFilters: TabFilters = {
   marketplacesSoldOn: [],
 };
 
-interface FilterContextType {
-  // Returns the raw tab filters state (for internal use)
-  getTabFiltersRaw: (tab: TabName) => TabFilters;
-  setTabFilter: <K extends keyof TabFilters>(tab: TabName, key: K, value: TabFilters[K]) => void;
-  setTabFilters: (tab: TabName, updates: Partial<TabFilters>) => void;
-  resetTabFilters: (tab: TabName) => void;
-  excludeFile: (fileId: string) => void;
-  includeFile: (fileId: string) => void;
-  isFileExcluded: (fileId: string) => boolean;
-  // Global excluded files (persisted)
-  globalExcludedFileIds: string[];
-  // Version counter per tab - increments when that tab's filters change
-  tabVersions: Record<TabName, number>;
-}
-
 const FilterContext = createContext<FilterContextType | undefined>(undefined);
 
 export function FilterProvider({ children }: { children: ReactNode }) {
@@ -69,44 +66,24 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Per-tab filters - stored as a simple state object
-  const [tabFilters, setTabFiltersState] = useState<Record<TabName, Omit<TabFilters, 'excludedFileIds'>>>({
-    inbound: { ...defaultTabFilters },
-    processing: { ...defaultTabFilters },
-    sales: { ...defaultTabFilters },
-    outbound: { ...defaultTabFilters },
-    marketplace: { ...defaultTabFilters },
-    dsv: { ...defaultTabFilters },
+  // Per-tab filters
+  const [tabFilters, setTabFiltersState] = useState<Record<TabName, TabFilters>>({
+    inbound: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    processing: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    sales: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    outbound: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    marketplace: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    dsv: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
   });
 
-  // Version counters for each tab - used to trigger re-renders only for affected tabs
-  const [tabVersions, setTabVersions] = useState<Record<TabName, number>>({
-    inbound: 0,
-    processing: 0,
-    sales: 0,
-    outbound: 0,
-    marketplace: 0,
-    dsv: 0,
-  });
-
-  // Get raw tab filters (combines tab-specific with global excluded files)
-  const getTabFiltersRaw = useCallback((tab: TabName): TabFilters => {
-    const tabFilter = tabFilters[tab];
-    return {
-      ...tabFilter,
-      excludedFileIds: globalExcludedFileIds,
-    };
+  const getTabFilters = useCallback((tab: TabName): TabFilters => {
+    return { ...tabFilters[tab], excludedFileIds: globalExcludedFileIds };
   }, [tabFilters, globalExcludedFileIds]);
 
   const setTabFilter = useCallback(<K extends keyof TabFilters>(tab: TabName, key: K, value: TabFilters[K]) => {
     setTabFiltersState(prev => ({
       ...prev,
       [tab]: { ...prev[tab], [key]: value },
-    }));
-    // Increment version only for this specific tab
-    setTabVersions(prev => ({
-      ...prev,
-      [tab]: prev[tab] + 1,
     }));
   }, []);
 
@@ -115,24 +92,14 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       ...prev,
       [tab]: { ...prev[tab], ...updates },
     }));
-    // Increment version only for this specific tab
-    setTabVersions(prev => ({
-      ...prev,
-      [tab]: prev[tab] + 1,
-    }));
   }, []);
 
   const resetTabFilters = useCallback((tab: TabName) => {
     setTabFiltersState(prev => ({
       ...prev,
-      [tab]: { ...defaultTabFilters },
+      [tab]: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
     }));
-    // Increment version only for this specific tab
-    setTabVersions(prev => ({
-      ...prev,
-      [tab]: prev[tab] + 1,
-    }));
-  }, []);
+  }, [globalExcludedFileIds]);
 
   const excludeFile = useCallback((fileId: string) => {
     setGlobalExcludedFileIds(prev => {
@@ -154,55 +121,38 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     return globalExcludedFileIds.includes(fileId);
   }, [globalExcludedFileIds]);
 
-  // Memoize the context value
-  const contextValue = useMemo(() => ({ 
-    getTabFiltersRaw,
-    setTabFilter,
-    setTabFilters,
-    resetTabFilters,
-    excludeFile,
-    includeFile,
-    isFileExcluded,
-    globalExcludedFileIds,
-    tabVersions,
-  }), [getTabFiltersRaw, setTabFilter, setTabFilters, resetTabFilters, excludeFile, includeFile, isFileExcluded, globalExcludedFileIds, tabVersions]);
-
   return (
-    <FilterContext.Provider value={contextValue}>
+    <FilterContext.Provider value={{ 
+      getTabFilters,
+      setTabFilter,
+      setTabFilters,
+      resetTabFilters,
+      excludeFile,
+      includeFile,
+      isFileExcluded,
+      globalExcludedFileIds,
+    }}>
       {children}
     </FilterContext.Provider>
   );
 }
 
-// Hook for a specific tab - memoizes filters to ensure stable reference
 export function useTabFilters(tab: TabName) {
   const context = useContext(FilterContext);
   if (!context) {
     throw new Error('useTabFilters must be used within a FilterProvider');
   }
   
-  // Get the current version for this tab only
-  const tabVersion = context.tabVersions[tab];
-  const globalExcludedFileIds = context.globalExcludedFileIds;
-  
-  // Memoize filters based on tab version and global excluded files
-  // This ensures the filters object only changes when THIS tab's filters change
-  const filters = useMemo(() => {
-    return context.getTabFiltersRaw(tab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, tabVersion, globalExcludedFileIds]);
-  
-  const setFilter = useCallback(<K extends keyof TabFilters>(key: K, value: TabFilters[K]) => {
+  const filters = context.getTabFilters(tab);
+  const setFilter = <K extends keyof TabFilters>(key: K, value: TabFilters[K]) => {
     context.setTabFilter(tab, key, value);
-  }, [context, tab]);
-  
-  const setFilters = useCallback((updates: Partial<TabFilters>) => {
+  };
+  const setFilters = (updates: Partial<TabFilters>) => {
     context.setTabFilters(tab, updates);
-  }, [context, tab]);
-  
-  const resetFilters = useCallback(() => {
+  };
+  const resetFilters = () => {
     context.resetTabFilters(tab);
-  }, [context, tab]);
+  };
 
   return {
     filters,

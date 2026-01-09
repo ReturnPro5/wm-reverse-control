@@ -55,6 +55,7 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
       queryClient.invalidateQueries({ queryKey: ['file-uploads'] });
       onFilesChanged?.();
     } catch (error) {
+      console.error('Error deleting file:', error);
       toast.error('Failed to delete file');
     }
   };
@@ -77,6 +78,7 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ['file-uploads'] });
     } catch (error) {
+      console.error('Error updating file:', error);
       toast.error('Failed to rename file');
     }
   };
@@ -128,40 +130,40 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
               <div className="flex items-center gap-1 shrink-0">
                 {editingId === file.id ? (
                   <>
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
                       className="h-8 w-8"
                       onClick={() => handleSaveEdit(file.id)}
                     >
-                      <Check className="h-4 w-4" />
+                      <Check className="h-4 w-4 text-green-500" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
                       className="h-8 w-8"
                       onClick={handleCancelEdit}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4 text-destructive" />
                     </Button>
                   </>
                 ) : (
                   <>
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
                       className="h-8 w-8"
                       onClick={() => handleEdit(file)}
                     >
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
                       onClick={() => handleDelete(file.id, file.file_name)}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </>
                 )}
@@ -170,7 +172,9 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
           ))}
         </div>
       ) : (
-        <p className="text-muted-foreground text-sm">No files uploaded yet.</p>
+        <p className="text-muted-foreground text-center py-4">
+          No {fileType.toLowerCase()} files uploaded yet.
+        </p>
       )}
     </div>
   );

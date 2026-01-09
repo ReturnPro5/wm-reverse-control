@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
-import { parseCSV, parseExcelToCSV } from '@/lib/csvParser';
+import { parseCSV, ParsedUnit } from '@/lib/csvParser';
+import { determineFileType, parseFileBusinessDate, getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
 import { format } from 'date-fns';
-import { getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
+import { useToast } from '@/hooks/use-toast';
 
 export interface UploadProgress {
   stage: 'reading' | 'parsing' | 'uploading' | 'complete' | 'error';
@@ -11,78 +11,50 @@ export interface UploadProgress {
   progress: number;
 }
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
-
 export function useFileUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const { toast } = useToast();
 
   const uploadFile = useCallback(async (file: File) => {
-    // File size validation
-    if (file.size > MAX_FILE_SIZE) {
-      toast({
-        title: 'File too large',
-        description: 'Maximum file size is 50MB.',
-        variant: 'destructive',
-      });
-      return { success: false };
-    }
-
-    // File type validation
-    const validExtensions = ['.csv', '.xlsx', '.xls'];
-    const hasValidExtension = validExtensions.some(ext => 
-      file.name.toLowerCase().endsWith(ext)
-    );
-    if (!hasValidExtension) {
-      toast({
-        title: 'Invalid file type',
-        description: 'Please upload a CSV or Excel file.',
-        variant: 'destructive',
-      });
-      return { success: false };
-    }
-
     setIsUploading(true);
     setUploadProgress({ stage: 'reading', message: 'Reading file...', progress: 10 });
 
     try {
-      let content: string;
-      const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
+      // Read file content
+      const content = await file.text();
       
-      if (isExcel) {
-        // Parse Excel file
-        const arrayBuffer = await file.arrayBuffer();
-        content = await parseExcelToCSV(arrayBuffer);
-      } else {
-        // Parse CSV file
-        content = await file.text();
-      }
-
       setUploadProgress({ stage: 'parsing', message: 'Parsing data...', progress: 30 });
-
+      
+      // Parse CSV
       const { units, fileType, businessDate } = parseCSV(content, file.name);
-
+      
       if (units.length === 0) {
-        throw new Error('No valid data found in file. Please check the file format.');
+        throw new Error('No valid data found in file');
       }
 
-      // Limit total records for safety
-      if (units.length > 500000) {
-        throw new Error('File contains too many records. Maximum is 500,000 rows.');
+      // Show info toast if file type was auto-detected from smart fallback
+      const detectedType = determineFileType(file.name);
+      const isExplicitType = ['sales', 'inbound', 'outbound', 'inventory', 'production', 'processing'].some(
+        keyword => file.name.toLowerCase().includes(keyword)
+      );
+      
+      if (!isExplicitType) {
+        toast({
+          title: 'File Type Auto-Detected',
+          description: `File categorized as "${detectedType}" based on filename. For best results, use naming like: Sales_MM.DD.YY, Inbound_MM.DD.YY, Outbound_MM.DD.YY, Production_MM.DD.YY`,
+        });
       }
 
-      setUploadProgress({ stage: 'uploading', message: 'Creating file record...', progress: 40 });
+      setUploadProgress({ stage: 'uploading', message: 'Saving to database...', progress: 50 });
 
-      // Insert file upload record
+      // Create file upload record
       const { data: fileUpload, error: fileError } = await supabase
         .from('file_uploads')
         .insert({
-          file_name: file.name.slice(0, 255), // Limit filename length
+          file_name: file.name,
           file_type: fileType as any,
-          file_business_date: businessDate
-            ? format(businessDate, 'yyyy-MM-dd')
-            : format(new Date(), 'yyyy-MM-dd'),
+          file_business_date: businessDate ? format(businessDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
           row_count: units.length,
           processed: false,
         })
@@ -91,15 +63,16 @@ export function useFileUpload() {
 
       if (fileError) throw fileError;
 
-      // Process in batches
-      const batchSize = 100;
+      setUploadProgress({ stage: 'uploading', message: 'Processing units...', progress: 60 });
 
+      // Process units in batches
+      const batchSize = 100;
       for (let i = 0; i < units.length; i += batchSize) {
         const batch = units.slice(i, i + batchSize);
+        const progress = 60 + ((i / units.length) * 35);
+        setUploadProgress({ stage: 'uploading', message: `Processing units ${i + 1}-${Math.min(i + batchSize, units.length)}...`, progress });
 
-        // ===============================
-        // UNITS CANONICAL
-        // ===============================
+        // Upsert to units_canonical
         const canonicalRecords = batch.map(unit => ({
           trgid: unit.trgid,
           file_upload_id: fileUpload.id,
@@ -126,13 +99,14 @@ export function useFileUpload() {
           wm_day_of_week: unit.wmDayOfWeek,
         }));
 
-        await supabase.from('units_canonical').upsert(canonicalRecords, { onConflict: 'trgid' });
+        const { error: canonicalError } = await supabase
+          .from('units_canonical')
+          .upsert(canonicalRecords, { onConflict: 'trgid' });
 
-        // ===============================
-        // LIFECYCLE EVENTS
-        // ===============================
+        if (canonicalError) throw canonicalError;
+
+        // Insert lifecycle events
         const lifecycleEvents: any[] = [];
-
         for (const unit of batch) {
           const stages = [
             { stage: 'Received', date: unit.receivedOn },
@@ -149,9 +123,7 @@ export function useFileUpload() {
                 file_upload_id: fileUpload.id,
                 stage: stage as any,
                 event_date: format(date, 'yyyy-MM-dd'),
-                file_business_date: businessDate
-                  ? format(businessDate, 'yyyy-MM-dd')
-                  : format(new Date(), 'yyyy-MM-dd'),
+                file_business_date: businessDate ? format(businessDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
                 wm_week: getWMWeekNumber(date),
                 wm_day_of_week: getWMDayOfWeek(date),
               });
@@ -159,75 +131,92 @@ export function useFileUpload() {
           }
         }
 
-        if (lifecycleEvents.length) {
-          await supabase.from('lifecycle_events').insert(lifecycleEvents);
+        if (lifecycleEvents.length > 0) {
+          const { error: lifecycleError } = await supabase
+            .from('lifecycle_events')
+            .insert(lifecycleEvents);
+
+          if (lifecycleError) console.error('Lifecycle insert error:', lifecycleError);
         }
 
-        // ===============================
-        // SALES METRICS (FULL FEE SUPPORT)
-        // ===============================
+        // Insert sales metrics for Sales files
         if (fileType === 'Sales') {
           const salesRecords = batch
-            .filter(u => u.orderClosedDate)
-            .map(u => ({
-              trgid: u.trgid,
+            .filter(unit => unit.orderClosedDate)
+            .map(unit => ({
+              trgid: unit.trgid,
               file_upload_id: fileUpload.id,
-              order_closed_date: format(u.orderClosedDate!, 'yyyy-MM-dd'),
-              sale_price: u.salePrice || 0,
-              discount_amount: u.discountAmount || 0,
-              gross_sale: u.grossSale || 0,
-              effective_retail: u.effectiveRetail,
-              refund_amount: u.refundAmount || 0,
-              is_refunded: u.isRefunded,
-              program_name: u.programName,
-              master_program_name: u.masterProgramName,
-              category_name: u.categoryName,
-              marketplace_profile_sold_on: u.marketplaceProfileSoldOn,
-              facility: u.facility,
-              tag_clientsource: u.tagClientSource || null,
-              wm_week: u.wmWeek,
-              wm_day_of_week: u.wmDayOfWeek,
-
-              // Invoiced fees
-              invoiced_check_in_fee: u.invoicedCheckInFee,
-              invoiced_refurb_fee: u.invoicedRefurbFee,
-              invoiced_overbox_fee: u.invoicedOverboxFee,
-              invoiced_packaging_fee: u.invoicedPackagingFee,
-              invoiced_pps_fee: u.invoicedPpsFee,
-              invoiced_shipping_fee: u.invoicedShippingFee,
-              invoiced_merchant_fee: u.invoicedMerchantFee,
-              invoiced_3pmp_fee: u.invoiced3pmpFee,
-              invoiced_revshare_fee: u.invoicedRevshareFee,
-              invoiced_marketing_fee: u.invoicedMarketingFee,
-              invoiced_refund_fee: u.invoicedRefundFee,
-
-              // Invoice totals
-              service_invoice_total: u.serviceInvoiceTotal,
-              vendor_invoice_total: u.vendorInvoiceTotal,
-              expected_hv_as_is_refurb_fee: u.expectedHvAsIsRefurbFee,
-
+              order_closed_date: format(unit.orderClosedDate!, 'yyyy-MM-dd'),
+              sale_price: unit.salePrice || 0,
+              discount_amount: unit.discountAmount || 0,
+              gross_sale: unit.grossSale || 0,
+              effective_retail: unit.effectiveRetail,
+              refund_amount: unit.refundAmount || 0,
+              is_refunded: unit.isRefunded,
+              program_name: unit.programName,
+              master_program_name: unit.masterProgramName,
+              category_name: unit.categoryName,
+              marketplace_profile_sold_on: unit.marketplaceProfileSoldOn,
+              facility: unit.facility,
+              tag_clientsource: unit.tagClientSource || null,
+              wm_week: unit.wmWeek,
+              wm_day_of_week: unit.wmDayOfWeek,
+              // Invoiced fee fields
+              invoiced_check_in_fee: unit.invoicedCheckInFee,
+              invoiced_refurb_fee: unit.invoicedRefurbFee,
+              invoiced_overbox_fee: unit.invoicedOverboxFee,
+              invoiced_packaging_fee: unit.invoicedPackagingFee,
+              invoiced_pps_fee: unit.invoicedPpsFee,
+              invoiced_shipping_fee: unit.invoicedShippingFee,
+              invoiced_merchant_fee: unit.invoicedMerchantFee,
+              invoiced_3pmp_fee: unit.invoiced3pmpFee,
+              invoiced_revshare_fee: unit.invoicedRevshareFee,
+              invoiced_marketing_fee: unit.invoicedMarketingFee,
+              invoiced_refund_fee: unit.invoicedRefundFee,
+              service_invoice_total: unit.serviceInvoiceTotal,
+              vendor_invoice_total: unit.vendorInvoiceTotal,
+              expected_hv_as_is_refurb_fee: unit.expectedHvAsIsRefurbFee,
               // Additional fields
-              sorting_index: u.sortingIndex,
-              b2c_auction: u.b2cAuction,
-              tag_ebay_auction_sale: u.tagEbayAuctionSale,
-              tag_pricing_condition: u.tagPricingCondition,
-              
-              // Calculated check-in fee
-              calculated_check_in_fee: u.invoicedCheckInFee,
+              sorting_index: unit.sortingIndex || null,
+              b2c_auction: unit.b2cAuction || null,
+              tag_ebay_auction_sale: unit.tagEbayAuctionSale,
             }));
 
           if (salesRecords.length > 0) {
-            await supabase.from('sales_metrics').upsert(salesRecords, { onConflict: 'trgid' });
+            const { error: salesError } = await supabase
+              .from('sales_metrics')
+              .upsert(salesRecords, { onConflict: 'trgid' });
+
+            if (salesError) console.error('Sales insert error:', salesError);
           }
         }
 
-        // Update progress
-        const progress = Math.min(40 + Math.round((i / units.length) * 55), 95);
-        setUploadProgress({
-          stage: 'uploading',
-          message: `Processing batch ${Math.floor(i / batchSize) + 1}...`,
-          progress,
-        });
+        // Insert fee metrics for Outbound files
+        if (fileType === 'Outbound') {
+          const feeRecords = batch
+            .filter(unit => unit.totalFees !== null)
+            .map(unit => ({
+              trgid: unit.trgid,
+              file_upload_id: fileUpload.id,
+              check_in_fee: unit.checkInFee || 0,
+              packaging_fee: unit.packagingFee || 0,
+              pick_pack_ship_fee: unit.pickPackShipFee || 0,
+              refurbishing_fee: unit.refurbishingFee || 0,
+              marketplace_fee: unit.marketplaceFee || 0,
+              total_fees: unit.totalFees || 0,
+              program_name: unit.programName,
+              facility: unit.facility,
+              wm_week: unit.wmWeek,
+            }));
+
+          if (feeRecords.length > 0) {
+            const { error: feeError } = await supabase
+              .from('fee_metrics')
+              .upsert(feeRecords, { onConflict: 'trgid' });
+
+            if (feeError) console.error('Fee insert error:', feeError);
+          }
+        }
       }
 
       // Mark file as processed
@@ -237,24 +226,33 @@ export function useFileUpload() {
         .eq('id', fileUpload.id);
 
       setUploadProgress({ stage: 'complete', message: 'Upload complete!', progress: 100 });
+
       toast({
-        title: 'Upload Successful',
-        description: `Processed ${units.length.toLocaleString()} records from ${file.name}`,
+        title: 'Success',
+        description: `Uploaded ${units.length} units from ${file.name}`,
       });
 
-      return { success: true };
+      return { success: true, unitsCount: units.length, fileType };
     } catch (error) {
-      setUploadProgress({ stage: 'error', message: 'Upload failed', progress: 0 });
+      console.error('Upload error:', error);
+      setUploadProgress({ stage: 'error', message: error instanceof Error ? error.message : 'Upload failed', progress: 0 });
+      
       toast({
         title: 'Upload Failed',
-        description: 'Invalid file format or data.',
+        description: error instanceof Error ? error.message : 'An error occurred during upload',
         variant: 'destructive',
       });
-      return { success: false };
+
+      return { success: false, error };
     } finally {
       setIsUploading(false);
+      setTimeout(() => setUploadProgress(null), 3000);
     }
   }, [toast]);
 
-  return { uploadFile, isUploading, uploadProgress };
+  return {
+    uploadFile,
+    isUploading,
+    uploadProgress,
+  };
 }

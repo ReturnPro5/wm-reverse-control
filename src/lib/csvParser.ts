@@ -1,5 +1,4 @@
 import { getWMWeekNumber, getWMDayOfWeek, determineFileType, parseFileBusinessDate } from './wmWeek';
-import * as XLSX from 'xlsx';
 
 export interface ParsedUnit {
   trgid: string;
@@ -36,7 +35,7 @@ export interface ParsedUnit {
   wmWeek: number | null;
   wmDayOfWeek: number | null;
   currentStage: 'Received' | 'CheckedIn' | 'Tested' | 'Listed' | 'Sold' | null;
-
+  // Invoiced fee fields from sales files
   invoicedCheckInFee: number | null;
   invoicedRefurbFee: number | null;
   invoicedOverboxFee: number | null;
@@ -48,190 +47,232 @@ export interface ParsedUnit {
   invoicedRevshareFee: number | null;
   invoicedMarketingFee: number | null;
   invoicedRefundFee: number | null;
-
   serviceInvoiceTotal: number | null;
   vendorInvoiceTotal: number | null;
   expectedHvAsIsRefurbFee: number | null;
-
+  // Additional sales fields
   sortingIndex: string;
   b2cAuction: string;
   tagEbayAuctionSale: boolean;
-  tagPricingCondition: string;
 }
 
-// Parse a number safely with bounds checking
-function parseNumber(value: string, min = -1000000, max = 1000000): number | null {
-  if (!value) return null;
+function parseDate(value: string): Date | null {
+  if (!value || value.trim() === '') return null;
+  
+  // Try MM/DD/YYYY HH:MM:SS AM/PM format
+  const dateTimeMatch = value.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?/i);
+  if (dateTimeMatch) {
+    const [, month, day, year, hours, minutes, seconds, ampm] = dateTimeMatch;
+    let hour = parseInt(hours, 10);
+    if (ampm?.toUpperCase() === 'PM' && hour !== 12) hour += 12;
+    if (ampm?.toUpperCase() === 'AM' && hour === 12) hour = 0;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), hour, parseInt(minutes), parseInt(seconds));
+  }
+  
+  // Try MM/DD/YYYY format - use noon to avoid timezone edge cases
+  const dateMatch = value.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dateMatch) {
+    const [, month, day, year] = dateMatch;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+  }
+  
+  return null;
+}
+
+function parseNumber(value: string): number | null {
+  if (!value || value.trim() === '') return null;
   const cleaned = value.replace(/[,$]/g, '').trim();
   const num = parseFloat(cleaned);
-  if (isNaN(num)) return null;
-  // Bounds checking to prevent unreasonable values
-  if (num < min || num > max) return null;
-  return num;
+  return isNaN(num) ? null : num;
 }
 
-// Parse CSV line properly handling quoted fields
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
+function parseBoolean(value: string): boolean {
+  if (!value || value.trim() === '') return false;
+  const lower = value.toLowerCase().trim();
+  return lower === 'true' || lower === 'yes' || lower === '1';
+}
+
+function calculateEffectiveRetail(upcRetail: number | null, categoryAvg: number | null): number | null {
+  if (upcRetail === null && categoryAvg === null) return null;
+  if (upcRetail === null) return categoryAvg;
+  if (categoryAvg === null) return upcRetail;
+  return Math.min(upcRetail, categoryAvg);
+}
+
+function determineCurrentStage(unit: Partial<ParsedUnit>): 'Received' | 'CheckedIn' | 'Tested' | 'Listed' | 'Sold' | null {
+  if (unit.orderClosedDate) return 'Sold';
+  if (unit.firstListedDate) return 'Listed';
+  if (unit.testedOn) return 'Tested';
+  if (unit.checkedInOn) return 'CheckedIn';
+  if (unit.receivedOn) return 'Received';
+  return null;
+}
+
+export function parseCSV(content: string, fileName: string): { units: ParsedUnit[]; fileType: string; businessDate: Date | null } {
+  const lines = content.split('\n');
+  if (lines.length < 2) return { units: [], fileType: 'Unknown', businessDate: null };
   
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+  const fileType = determineFileType(fileName);
+  const businessDate = parseFileBusinessDate(fileName);
+  
+  // Parse header row
+  const headerLine = lines[0];
+  const headers: string[] = [];
+  let inQuotes = false;
+  let currentHeader = '';
+  
+  for (const char of headerLine) {
     if (char === '"') {
       inQuotes = !inQuotes;
     } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
+      headers.push(currentHeader.trim());
+      currentHeader = '';
     } else {
-      current += char;
+      currentHeader += char;
     }
   }
-  result.push(current.trim());
-  return result;
-}
-
-// Sanitize text fields to prevent injection and limit size
-function sanitizeText(text: string | null, maxLength = 500): string {
-  if (!text) return '';
-  return text.trim().slice(0, maxLength);
-}
-
-// Parse date safely
-function parseDate(value: string): Date | null {
-  if (!value || value.trim() === '') return null;
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return null;
-  // Basic sanity check for reasonable dates (1990-2100)
-  const year = date.getFullYear();
-  if (year < 1990 || year > 2100) return null;
-  return date;
-}
-
-export function parseCSV(content: string, fileName: string) {
-  const lines = content.split('\n');
-  if (lines.length < 2) return { units: [], fileType: 'Unknown', businessDate: null };
-
-  const fileType = determineFileType(fileName);
-  const businessDate = parseFileBusinessDate(fileName);
-
-  // Parse headers properly
-  const headers = parseCSVLine(lines[0]);
+  headers.push(currentHeader.trim());
+  
+  // Create header index map
   const headerIndex: Record<string, number> = {};
-  headers.forEach((h, i) => (headerIndex[h] = i));
-
-  const getValue = (row: string[], col: string) =>
-    headerIndex[col] !== undefined ? row[headerIndex[col]] : '';
-
+  headers.forEach((h, i) => {
+    headerIndex[h] = i;
+  });
+  
   const units: ParsedUnit[] = [];
-
+  
+  // Parse data rows
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     
-    const row = parseCSVLine(line);
-    const trgid = sanitizeText(getValue(row, 'TRGID'), 50).replace(/[^\d]/g, '');
+    // Parse CSV line respecting quotes
+    const values: string[] = [];
+    let inQuote = false;
+    let currentValue = '';
     
-    // Validate TRGID exists and is not empty after cleaning
+    for (const char of line) {
+      if (char === '"') {
+        inQuote = !inQuote;
+      } else if (char === ',' && !inQuote) {
+        values.push(currentValue.trim());
+        currentValue = '';
+      } else {
+        currentValue += char;
+      }
+    }
+    values.push(currentValue.trim());
+    
+    const getValue = (colName: string): string => {
+      const idx = headerIndex[colName];
+      return idx !== undefined && idx < values.length ? values[idx] : '';
+    };
+    
+    const trgid = getValue('TRGID');
     if (!trgid) continue;
-
-    const salePrice = parseNumber(getValue(row, 'Sale Price (Discount applied)'), 0, 1000000);
-    const refundAmount = parseNumber(getValue(row, 'RefundedSalePriceCalculated'), 0, 1000000);
-
-    const invoicedCheckInFee =
-      parseNumber(getValue(row, 'CheckInFeeInvoiced')) ??
-      parseNumber(getValue(row, 'Invoiced_CheckInFee')) ??
-      parseNumber(getValue(row, 'InvoicedCheckInFee')) ??
-      parseNumber(getValue(row, 'Invoiced Check In Fee'));
-
-    // Try multiple column names for order closed date
-    const orderClosedDateStr = getValue(row, 'OrderClosedDate') || 
-      getValue(row, 'Order Closed Date') || 
-      getValue(row, 'Marketplace Profile Sold On');
-    const orderClosedDate = parseDate(orderClosedDateStr);
     
-    const receivedOnStr = getValue(row, 'ReceivedOn') || getValue(row, 'Received On');
-    const checkedInOnStr = getValue(row, 'CheckedInOn') || getValue(row, 'Checked In On');
-    const testedOnStr = getValue(row, 'TestedOn') || getValue(row, 'Tested On');
-    const firstListedDateStr = getValue(row, 'FirstListedDate') || getValue(row, 'First Listed Date');
-
+    const upcRetail = parseNumber(getValue('UPCRetail'));
+    const categoryAvg = parseNumber(getValue('MR_LMR_UPC_AverageCategoryRetail'));
+    const effectiveRetail = calculateEffectiveRetail(upcRetail, categoryAvg);
+    
+    const salePrice = parseNumber(getValue('Sale Price (Discount applied)'));
+    const refundAmount = parseNumber(getValue('RefundedSalePriceCalculated'));
+    
+    // Calculated fees (from Outbound files)
+    const checkInFee = parseNumber(getValue('CheckInFeeCalculated'));
+    const packagingFee = parseNumber(getValue('PackagingFeeCalculated'));
+    const pickPackShipFee = parseNumber(getValue('ServicePickPackShipFeeCalculated'));
+    const refurbishingFee = parseNumber(getValue('ServiceRefurbishingFeeCalculated'));
+    const marketplaceFee = parseNumber(getValue('ServiceThirdPartyMarketplaceFeeCalculated'));
+    
+    // Invoiced fees (from Sales files) - try multiple column name variants
+    const invoicedCheckInFee = parseNumber(getValue('Invoiced_CheckInFee')) ?? parseNumber(getValue('InvoicedCheckInFee')) ?? parseNumber(getValue('Invoiced Check In Fee'));
+    const invoicedRefurbFee = parseNumber(getValue('Invoiced_RefurbFee')) ?? parseNumber(getValue('InvoicedRefurbFee')) ?? parseNumber(getValue('Invoiced Refurb Fee'));
+    const invoicedOverboxFee = parseNumber(getValue('Invoiced_OverboxFee')) ?? parseNumber(getValue('InvoicedOverboxFee')) ?? parseNumber(getValue('Invoiced Overbox Fee'));
+    const invoicedPackagingFee = parseNumber(getValue('Invoiced_PackagingFee')) ?? parseNumber(getValue('InvoicedPackagingFee')) ?? parseNumber(getValue('Invoiced Packaging Fee'));
+    const invoicedPpsFee = parseNumber(getValue('Invoiced_PPSFee')) ?? parseNumber(getValue('InvoicedPPSFee')) ?? parseNumber(getValue('Invoiced PPS Fee'));
+    const invoicedShippingFee = parseNumber(getValue('Invoiced_ShippingFee')) ?? parseNumber(getValue('InvoicedShippingFee')) ?? parseNumber(getValue('Invoiced Shipping Fee'));
+    const invoicedMerchantFee = parseNumber(getValue('Invoiced_MerchantFee')) ?? parseNumber(getValue('InvoicedMerchantFee')) ?? parseNumber(getValue('Invoiced Merchant Fee'));
+    const invoiced3pmpFee = parseNumber(getValue('Invoiced_3PMPFee')) ?? parseNumber(getValue('Invoiced3PMPFee')) ?? parseNumber(getValue('Invoiced 3PMP Fee'));
+    const invoicedRevshareFee = parseNumber(getValue('Invoiced_RevshareFee')) ?? parseNumber(getValue('InvoicedRevshareFee')) ?? parseNumber(getValue('Invoiced Revshare Fee'));
+    const invoicedMarketingFee = parseNumber(getValue('Invoiced_MarketingFee')) ?? parseNumber(getValue('InvoicedMarketingFee')) ?? parseNumber(getValue('Invoiced Marketing Fee'));
+    const invoicedRefundFee = parseNumber(getValue('Invoiced_RefundFee')) ?? parseNumber(getValue('InvoicedRefundFee')) ?? parseNumber(getValue('Invoiced Refund Fee'));
+    
+    // Invoice totals
+    const serviceInvoiceTotal = parseNumber(getValue('ServiceInvoiceTotal')) ?? parseNumber(getValue('Service Invoice Total'));
+    const vendorInvoiceTotal = parseNumber(getValue('VendorInvoiceTotal')) ?? parseNumber(getValue('Vendor Invoice Total'));
+    
+    // Expected HV AS-IS refurb fee
+    const expectedHvAsIsRefurbFee = parseNumber(getValue('Expected_HV_AS_IS_RefurbFee')) ?? parseNumber(getValue('ExpectedHVASISRefurbFee')) ?? parseNumber(getValue('Expected HV AS-IS Refurb Fee'));
+    
+    // Sorting and auction fields
+    const sortingIndex = getValue('SortingIndex') || getValue('Sorting Index') || getValue('sorting_index') || '';
+    const b2cAuction = getValue('B2C_Auction') || getValue('B2CAuction') || getValue('B2C Auction') || '';
+    const tagEbayAuctionSale = parseBoolean(getValue('Tag_EbayAuctionSale') || getValue('TagEbayAuctionSale') || getValue('Tag Ebay Auction Sale'));
+    
+    const orderClosedDate = parseDate(getValue('OrderClosedDate'));
+    
     const unit: ParsedUnit = {
       trgid,
-      programName: sanitizeText(getValue(row, 'ProgramName'), 200),
-      masterProgramName: sanitizeText(getValue(row, 'Master Program Name'), 200),
-      upc: sanitizeText(getValue(row, 'UPC'), 50),
-      categoryName: sanitizeText(getValue(row, 'CategoryName'), 200),
-      title: sanitizeText(getValue(row, 'Title'), 500),
-      productStatus: sanitizeText(getValue(row, 'ProductStatus'), 100),
-      upcRetail: parseNumber(getValue(row, 'UPCRetail'), 0, 100000),
-      mrLmrUpcAverageCategoryRetail: parseNumber(getValue(row, 'MR_LMR_UPC_AverageCategoryRetail'), 0, 100000),
-      effectiveRetail: parseNumber(getValue(row, 'EffectiveRetail') || getValue(row, 'Effective Retail'), 0, 100000),
-      checkedInOn: parseDate(checkedInOnStr),
-      testedOn: parseDate(testedOnStr),
-      receivedOn: parseDate(receivedOnStr),
-      firstListedDate: parseDate(firstListedDateStr),
+      programName: getValue('ProgramName'),
+      masterProgramName: getValue('Master Program Name'),
+      upc: getValue('UPC').replace(/^'/, ''),
+      categoryName: getValue('CategoryName'),
+      title: getValue('Title'),
+      productStatus: getValue('ProductStatus'),
+      upcRetail,
+      mrLmrUpcAverageCategoryRetail: categoryAvg,
+      effectiveRetail,
+      checkedInOn: parseDate(getValue('CheckedInOn')),
+      testedOn: parseDate(getValue('TestedOn')),
+      receivedOn: parseDate(getValue('ReceivedOn')),
+      firstListedDate: parseDate(getValue('FirstListedOnMarketplaceOn')),
       orderClosedDate,
       salePrice,
-      discountAmount: parseNumber(getValue(row, 'Discount Amount') || getValue(row, 'DiscountAmount'), 0, 100000),
-      grossSale: parseNumber(getValue(row, 'Gross Sale') || getValue(row, 'GrossSale'), 0, 1000000) ?? salePrice,
+      discountAmount: null,
+      grossSale: salePrice,
       refundAmount,
       isRefunded: !!refundAmount && refundAmount > 0,
-      checkInFee: null,
-      packagingFee: null,
-      pickPackShipFee: null,
-      refurbishingFee: null,
-      marketplaceFee: null,
-      totalFees: null,
-      marketplaceProfileSoldOn: sanitizeText(getValue(row, 'MarketplaceProfileSoldOn') || getValue(row, 'Marketplace'), 200),
-      facility: sanitizeText(getValue(row, 'Tag_Facility'), 100),
-      locationId: sanitizeText(getValue(row, 'LocationID'), 100),
-      tagClientOwnership: sanitizeText(getValue(row, 'Tag_Ownership'), 100),
-      tagClientSource: sanitizeText(getValue(row, 'Tag_ClientSource'), 100),
+      checkInFee,
+      packagingFee,
+      pickPackShipFee,
+      refurbishingFee,
+      marketplaceFee,
+      totalFees: [checkInFee, packagingFee, pickPackShipFee, refurbishingFee, marketplaceFee]
+        .filter(f => f !== null)
+        .reduce((sum, f) => sum + (f || 0), 0) || null,
+      marketplaceProfileSoldOn: getValue('Marketplace Profile Sold On'),
+      facility: getValue('Tag_Facility'),
+      locationId: getValue('LocationID'),
+      tagClientOwnership: getValue('Tag_Ownership'),
+      tagClientSource: getValue('Tag_ClientSource') || getValue('ClientSource_Tag') || getValue('Tag_Client_Source'),
       wmWeek: orderClosedDate ? getWMWeekNumber(orderClosedDate) : null,
       wmDayOfWeek: orderClosedDate ? getWMDayOfWeek(orderClosedDate) : null,
-      currentStage: orderClosedDate ? 'Sold' : null,
-
+      currentStage: null,
+      // Invoiced fees
       invoicedCheckInFee,
-      invoicedRefurbFee: parseNumber(getValue(row, 'RefurbFeeInvoiced') || getValue(row, 'Invoiced_RefurbFee')),
-      invoicedOverboxFee: parseNumber(getValue(row, 'OverboxFeeInvoiced') || getValue(row, 'Invoiced_OverboxFee')),
-      invoicedPackagingFee: parseNumber(getValue(row, 'PackagingFeeInvoiced') || getValue(row, 'Invoiced_PackagingFee')),
-      invoicedPpsFee: parseNumber(getValue(row, 'PPSFeeInvoiced') || getValue(row, 'Invoiced_PPSFee')),
-      invoicedShippingFee: parseNumber(getValue(row, 'ShippingFeeInvoiced') || getValue(row, 'Invoiced_ShippingFee')),
-      invoicedMerchantFee: parseNumber(getValue(row, 'MerchantFeeInvoiced') || getValue(row, 'Invoiced_MerchantFee')),
-      invoiced3pmpFee: parseNumber(getValue(row, '3PMPFeeInvoiced') || getValue(row, 'Invoiced_3PMPFee')),
-      invoicedRevshareFee: parseNumber(getValue(row, 'RevshareFeeInvoiced') || getValue(row, 'Invoiced_RevshareFee')),
-      invoicedMarketingFee: parseNumber(getValue(row, 'MarketingFeeInvoiced') || getValue(row, 'Invoiced_MarketingFee')),
-      invoicedRefundFee: parseNumber(getValue(row, 'RefundFeeInvoiced') || getValue(row, 'Invoiced_RefundFee')),
-
-      serviceInvoiceTotal: parseNumber(getValue(row, 'ServiceInvoiceTotal') || getValue(row, 'Service Invoice Total')),
-      vendorInvoiceTotal: parseNumber(getValue(row, 'VendorInvoiceTotal') || getValue(row, 'Vendor Invoice Total')),
-      expectedHvAsIsRefurbFee: parseNumber(getValue(row, 'ExpectedHVAsIsRefurbFee') || getValue(row, 'Expected HV As-Is Refurb Fee')),
-
-      sortingIndex: sanitizeText(getValue(row, 'SortingIndex'), 100),
-      b2cAuction: sanitizeText(getValue(row, 'B2CAuction') || getValue(row, 'B2C Auction'), 100),
-      tagEbayAuctionSale: getValue(row, 'Tag_EbayAuctionSale')?.toLowerCase() === 'true',
-      tagPricingCondition: sanitizeText(getValue(row, 'Tag_PricingCondition'), 100),
+      invoicedRefurbFee,
+      invoicedOverboxFee,
+      invoicedPackagingFee,
+      invoicedPpsFee,
+      invoicedShippingFee,
+      invoicedMerchantFee,
+      invoiced3pmpFee,
+      invoicedRevshareFee,
+      invoicedMarketingFee,
+      invoicedRefundFee,
+      serviceInvoiceTotal,
+      vendorInvoiceTotal,
+      expectedHvAsIsRefurbFee,
+      // Additional fields
+      sortingIndex,
+      b2cAuction,
+      tagEbayAuctionSale,
     };
-
+    
+    unit.currentStage = determineCurrentStage(unit);
     units.push(unit);
   }
-
+  
   return { units, fileType, businessDate };
-}
-
-// Convert Excel file to CSV string
-export async function parseExcelToCSV(arrayBuffer: ArrayBuffer): Promise<string> {
-  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-  
-  // Get the first sheet
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
-  
-  // Convert to CSV
-  const csv = XLSX.utils.sheet_to_csv(worksheet, { 
-    blankrows: false,
-    strip: true
-  });
-  
-  return csv;
 }
