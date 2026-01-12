@@ -3,7 +3,7 @@ import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
-import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
+import { MonthlyFileUploadZone } from '@/components/dashboard/MonthlyFileUploadZone';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   DollarSign, 
@@ -410,7 +410,7 @@ export function QuarterlyReviewTab() {
             Upload monthly CSV files for quarterly review analysis. Use naming convention: <code className="bg-muted px-1 rounded">Monthly_YYYY-MM.csv</code>
           </p>
           <div className="grid gap-6 md:grid-cols-2">
-            <FileUploadZone onUploadComplete={handleFilesChanged} />
+            <MonthlyFileUploadZone onUploadComplete={handleFilesChanged} />
             <TabFileManager fileType="Monthly" onFilesChanged={handleFilesChanged} />
           </div>
         </CardContent>
