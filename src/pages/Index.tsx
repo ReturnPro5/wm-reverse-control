@@ -6,6 +6,7 @@ import { SalesTab } from '@/components/tabs/SalesTab';
 import { OutboundTab } from '@/components/tabs/OutboundTab';
 import { MarketplaceTab } from '@/components/tabs/MarketplaceTab';
 import { DSVTab } from '@/components/tabs/DSVTab';
+import { QuarterlyReviewTab } from '@/components/tabs/QuarterlyReviewTab';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('inbound');
@@ -24,6 +25,8 @@ const Index = () => {
         return <MarketplaceTab />;
       case 'dsv':
         return <DSVTab />;
+      case 'quarterly':
+        return <QuarterlyReviewTab />;
       default:
         return <InboundTab />;
     }

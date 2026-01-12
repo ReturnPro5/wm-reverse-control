@@ -23,7 +23,7 @@ export interface TabFilters {
   marketplacesSoldOn: string[];
 }
 
-export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv';
+export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv' | 'quarterly-review';
 
 interface FilterContextType {
   getTabFilters: (tab: TabName) => TabFilters;
@@ -74,6 +74,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     outbound: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
     marketplace: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
     dsv: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    'quarterly-review': { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
   });
 
   const getTabFilters = useCallback((tab: TabName): TabFilters => {

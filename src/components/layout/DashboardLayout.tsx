@@ -7,7 +7,8 @@ import {
   DollarSign,
   Truck,
   Store,
-  ShoppingCart
+  ShoppingCart,
+  CalendarRange
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -24,6 +25,7 @@ const tabs = [
   { id: 'outbound', label: 'Outbound/Fees', icon: Truck },
   { id: 'marketplace', label: 'WM Marketplace', icon: Store },
   { id: 'dsv', label: 'WM DSV', icon: ShoppingCart },
+  { id: 'quarterly', label: 'Quarterly Review', icon: CalendarRange },
 ];
 
 export function DashboardLayout({ children, activeTab, onTabChange }: DashboardLayoutProps) {
