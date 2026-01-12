@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
+import { TabFileManager } from '@/components/dashboard/TabFileManager';
+import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   DollarSign, 
@@ -9,7 +11,8 @@ import {
   BarChart3, 
   Calendar,
   Target,
-  Percent
+  Percent,
+  Upload
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -26,6 +29,7 @@ import {
   Area
 } from 'recharts';
 import { mapMarketplace } from '@/lib/marketplaceMapping';
+import { useQueryClient } from '@tanstack/react-query';
 
 const TAB_NAME = 'quarterly-review';
 
@@ -60,12 +64,18 @@ const getFiscalYear = (dateStr: string): number => {
 };
 
 export function QuarterlyReviewTab() {
+  const queryClient = useQueryClient();
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { data: salesData, refetch: refetchData } = useFilteredSales(TAB_NAME);
 
   const refetch = () => {
     refetchOptions();
     refetchData();
+  };
+
+  const handleFilesChanged = () => {
+    queryClient.invalidateQueries({ queryKey: ['file-uploads'] });
+    refetch();
   };
 
   // Aggregate data by quarter
@@ -383,6 +393,25 @@ export function QuarterlyReviewTab() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Monthly File Upload Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Monthly Data Files
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            Upload monthly CSV files for quarterly review analysis. Use naming convention: <code className="bg-muted px-1 rounded">Monthly_YYYY-MM.csv</code>
+          </p>
+          <div className="grid gap-6 md:grid-cols-2">
+            <FileUploadZone onUploadComplete={handleFilesChanged} />
+            <TabFileManager fileType="Monthly" onFilesChanged={handleFilesChanged} />
           </div>
         </CardContent>
       </Card>
