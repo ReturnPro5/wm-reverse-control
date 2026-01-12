@@ -2,7 +2,7 @@ import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
-import { DollarSign, Percent, Package, TrendingUp, AlertTriangle } from 'lucide-react';
+import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, Receipt } from 'lucide-react';
 import { 
   XAxis, 
   YAxis, 
@@ -18,7 +18,6 @@ import {
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales, useFilteredFees } from '@/hooks/useFilteredData';
 import { mapMarketplace, marketplaceColors, getMarketplaceColor } from '@/lib/marketplaceMapping';
-import { calculateTotalFees } from '@/lib/feeCalculator';
 
 const TAB_NAME = 'sales' as const;
 
@@ -44,20 +43,22 @@ export function SalesTab() {
   const effectiveRetail = salesData?.reduce((sum, r) => sum + (Number(r.effective_retail) || 0), 0) || 0;
   const unitsCount = salesData?.length || 0;
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
+  
+  // Track refunds separately
   const refundTotal = salesData?.reduce((sum, r) => sum + (Number(r.refund_amount) || 0), 0) || 0;
   
-  // Calculate fees using lookup tables (for Net Sales KPI)
-  const calculatedFees = salesData ? calculateTotalFees(salesData.map(s => ({
-    sale_price: Number(s.sale_price) || 0,
-    category_name: s.category_name,
-    program_name: s.program_name,
-    marketplace_profile_sold_on: s.marketplace_profile_sold_on,
-    facility: s.facility,
-    effective_retail: Number(s.effective_retail) || 0,
-    tag_clientsource: s.tag_clientsource
-  }))) : { totalFees: 0, breakdown: { checkInFees: 0, ppsFees: 0, refurbFees: 0, marketplaceFees: 0, revshareFees: 0, marketingFees: 0 } };
-  
-  const netSales = grossSales - calculatedFees.totalFees;
+  // Sum invoiced fees directly from sales_metrics for each fee component
+  const checkInFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_check_in_fee) || 0), 0) || 0;
+  const refurbFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_refurb_fee) || 0), 0) || 0;
+  const overboxFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_overbox_fee) || 0), 0) || 0;
+  const packagingFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_packaging_fee) || 0), 0) || 0;
+  const ppsFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_pps_fee) || 0), 0) || 0;
+  const shippingFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_shipping_fee) || 0), 0) || 0;
+  const merchantFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_merchant_fee) || 0), 0) || 0;
+  const revshareFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_revshare_fee) || 0), 0) || 0;
+  const threePMPFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_3pmp_fee) || 0), 0) || 0;
+  const marketingFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_marketing_fee) || 0), 0) || 0;
+  const refundFeeTotal = salesData?.reduce((sum, r) => sum + (Number(r.invoiced_refund_fee) || 0), 0) || 0;
 
   // Group by date with marketplace breakdown
   const dailyData = salesData?.reduce((acc, sale) => {
@@ -142,21 +143,14 @@ export function SalesTab() {
         onRefresh={refetch}
       />
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
+      {/* Main KPI Cards */}
+      <div className="grid gap-4 md:grid-cols-4">
         <KPICard
           title="Gross Sales"
           value={formatCurrency(grossSales)}
           subtitle="Never reduced by fees or refunds"
           icon={<DollarSign className="h-5 w-5" />}
           variant="success"
-        />
-        <KPICard
-          title="Net Sales"
-          value={formatCurrency(netSales)}
-          subtitle="Gross - Calculated Fees"
-          icon={<DollarSign className="h-5 w-5" />}
-          variant="primary"
         />
         <KPICard
           title="Recovery Rate"
@@ -309,6 +303,97 @@ export function SalesTab() {
           </div>
         </div>
       )}
+
+      {/* Fee Components Section */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Receipt className="h-5 w-5 text-muted-foreground" />
+          <h3 className="text-lg font-semibold">Fee Components (Invoiced Values)</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Individual fee totals from invoiced values in the sales data. Configure each fee calculation separately.
+        </p>
+        
+        <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-6">
+          <KPICard
+            title="Check-In Fee"
+            value={formatCurrency(checkInFeeTotal)}
+            subtitle="invoiced_check_in_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Refurb Fee"
+            value={formatCurrency(refurbFeeTotal)}
+            subtitle="invoiced_refurb_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Overbox Fee"
+            value={formatCurrency(overboxFeeTotal)}
+            subtitle="invoiced_overbox_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Packaging Fee"
+            value={formatCurrency(packagingFeeTotal)}
+            subtitle="invoiced_packaging_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="PPS Fee"
+            value={formatCurrency(ppsFeeTotal)}
+            subtitle="invoiced_pps_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Shipping Fee"
+            value={formatCurrency(shippingFeeTotal)}
+            subtitle="invoiced_shipping_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Merchant Fee"
+            value={formatCurrency(merchantFeeTotal)}
+            subtitle="invoiced_merchant_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Revshare Fee"
+            value={formatCurrency(revshareFeeTotal)}
+            subtitle="invoiced_revshare_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="3PMP Fee"
+            value={formatCurrency(threePMPFeeTotal)}
+            subtitle="invoiced_3pmp_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Marketing Fee"
+            value={formatCurrency(marketingFeeTotal)}
+            subtitle="invoiced_marketing_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+          <KPICard
+            title="Refund Fee"
+            value={formatCurrency(refundFeeTotal)}
+            subtitle="invoiced_refund_fee"
+            icon={<Receipt className="h-5 w-5" />}
+            variant="default"
+          />
+        </div>
+      </div>
 
       {/* File Manager */}
       <TabFileManager fileType="Sales" onFilesChanged={refetch} />
