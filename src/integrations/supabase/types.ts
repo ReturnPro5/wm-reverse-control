@@ -150,6 +150,7 @@ export type Database = {
       sales_metrics: {
         Row: {
           b2c_auction: string | null
+          calculated_check_in_fee: number | null
           category_name: string | null
           created_at: string
           discount_amount: number | null
@@ -181,6 +182,7 @@ export type Database = {
           sorting_index: string | null
           tag_clientsource: string | null
           tag_ebay_auction_sale: boolean | null
+          tag_pricing_condition: string | null
           trgid: string
           vendor_invoice_total: number | null
           wm_day_of_week: number | null
@@ -188,6 +190,7 @@ export type Database = {
         }
         Insert: {
           b2c_auction?: string | null
+          calculated_check_in_fee?: number | null
           category_name?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -219,6 +222,7 @@ export type Database = {
           sorting_index?: string | null
           tag_clientsource?: string | null
           tag_ebay_auction_sale?: boolean | null
+          tag_pricing_condition?: string | null
           trgid: string
           vendor_invoice_total?: number | null
           wm_day_of_week?: number | null
@@ -226,6 +230,7 @@ export type Database = {
         }
         Update: {
           b2c_auction?: string | null
+          calculated_check_in_fee?: number | null
           category_name?: string | null
           created_at?: string
           discount_amount?: number | null
@@ -257,6 +262,7 @@ export type Database = {
           sorting_index?: string | null
           tag_clientsource?: string | null
           tag_ebay_auction_sale?: boolean | null
+          tag_pricing_condition?: string | null
           trgid?: string
           vendor_invoice_total?: number | null
           wm_day_of_week?: number | null
