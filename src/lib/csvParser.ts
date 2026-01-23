@@ -110,7 +110,10 @@ function determineCurrentStage(unit: Partial<ParsedUnit>): 'Received' | 'Checked
 
 export function parseCSV(content: string, fileName: string): { units: ParsedUnit[]; fileType: string; businessDate: Date | null } {
   const lines = content.split('\n');
-  if (lines.length < 2) return { units: [], fileType: 'Unknown', businessDate: null };
+  if (lines.length < 2) {
+    console.error('CSV Parser: File has fewer than 2 lines');
+    return { units: [], fileType: 'Unknown', businessDate: null };
+  }
   
   const fileType = determineFileType(fileName);
   const businessDate = parseFileBusinessDate(fileName);
@@ -133,11 +136,42 @@ export function parseCSV(content: string, fileName: string): { units: ParsedUnit
   }
   headers.push(currentHeader.trim());
   
-  // Create header index map
+  // Log headers for debugging
+  console.log('CSV Parser: Found', headers.length, 'columns');
+  console.log('CSV Parser: First 10 headers:', headers.slice(0, 10));
+  
+  // Create header index map (case-insensitive and with space/underscore normalization)
   const headerIndex: Record<string, number> = {};
+  const normalizedHeaderIndex: Record<string, number> = {};
+  
   headers.forEach((h, i) => {
     headerIndex[h] = i;
+    // Also create normalized versions (lowercase, no spaces/underscores)
+    const normalized = h.toLowerCase().replace(/[\s_-]/g, '');
+    normalizedHeaderIndex[normalized] = i;
   });
+  
+  // Helper to find column with flexible matching
+  const findColumnIndex = (...possibleNames: string[]): number => {
+    for (const name of possibleNames) {
+      // Try exact match first
+      if (headerIndex[name] !== undefined) return headerIndex[name];
+      // Try normalized match
+      const normalized = name.toLowerCase().replace(/[\s_-]/g, '');
+      if (normalizedHeaderIndex[normalized] !== undefined) return normalizedHeaderIndex[normalized];
+    }
+    return -1;
+  };
+  
+  // Find TRGID column with flexible matching
+  const trgidColIndex = findColumnIndex('TRGID', 'trgid', 'TrgId', 'Trgid', 'TRG ID', 'TRG_ID');
+  
+  if (trgidColIndex === -1) {
+    console.error('CSV Parser: TRGID column not found. Available headers:', headers.join(', '));
+    return { units: [], fileType, businessDate };
+  }
+  
+  console.log('CSV Parser: TRGID column found at index', trgidColIndex);
   
   const units: ParsedUnit[] = [];
   
@@ -163,12 +197,20 @@ export function parseCSV(content: string, fileName: string): { units: ParsedUnit
     }
     values.push(currentValue.trim());
     
+    // More flexible getValue that tries multiple column name variants
     const getValue = (colName: string): string => {
       const idx = headerIndex[colName];
-      return idx !== undefined && idx < values.length ? values[idx] : '';
+      if (idx !== undefined && idx < values.length) return values[idx];
+      
+      // Try normalized lookup
+      const normalized = colName.toLowerCase().replace(/[\s_-]/g, '');
+      const normalizedIdx = normalizedHeaderIndex[normalized];
+      if (normalizedIdx !== undefined && normalizedIdx < values.length) return values[normalizedIdx];
+      
+      return '';
     };
     
-    const trgid = getValue('TRGID');
+    const trgid = values[trgidColIndex]?.trim();
     if (!trgid) continue;
     
     const upcRetail = parseNumber(getValue('UPCRetail'));

@@ -151,11 +151,20 @@ export function useFileUpload() {
       
       setUploadProgress({ stage: 'parsing', message: 'Parsing data...', progress: 30 });
       
+      // Log first few lines for debugging
+      const previewLines = content.split('\n').slice(0, 3);
+      console.log('File preview - first 3 lines:', previewLines);
+      
       // Parse CSV
       const { units, fileType, businessDate } = parseCSV(content, file.name);
       
       if (units.length === 0) {
-        throw new Error('No valid data found in file');
+        // Check if it's a header issue
+        const firstLine = content.split('\n')[0];
+        const hasHeaders = firstLine && firstLine.length > 0;
+        const headerPreview = firstLine?.substring(0, 200);
+        console.error('No valid data found. Headers preview:', headerPreview);
+        throw new Error(`No valid data found. The file must have a TRGID column. Check console for details. First columns: ${headerPreview?.substring(0, 100)}...`);
       }
 
       // Show info toast if file type was auto-detected from smart fallback
