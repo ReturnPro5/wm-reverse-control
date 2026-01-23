@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { useCallback, useState, useRef } from 'react';
+import { Upload, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,11 +7,22 @@ import { parseCSV } from '@/lib/csvParser';
 import { parseFileBusinessDate, getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import * as XLSX from 'xlsx';
 
 interface UploadProgress {
   stage: 'reading' | 'parsing' | 'uploading' | 'complete' | 'error';
   message: string;
   progress: number;
+  estimatedTimeRemaining?: number;
+}
+
+function formatTimeRemaining(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.ceil(seconds)}s remaining`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.ceil(seconds % 60);
+  return `${minutes}m ${secs}s remaining`;
 }
 
 interface MonthlyFileUploadZoneProps {
@@ -24,13 +35,32 @@ export function MonthlyFileUploadZone({ onUploadComplete, className }: MonthlyFi
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const { toast } = useToast();
+  const uploadStartTime = useRef<number>(0);
+
+  const parseExcelToCSV = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    return XLSX.utils.sheet_to_csv(worksheet);
+  };
 
   const uploadFile = useCallback(async (file: File) => {
     setIsUploading(true);
+    uploadStartTime.current = Date.now();
     setUploadProgress({ stage: 'reading', message: 'Reading file...', progress: 10 });
 
     try {
-      const content = await file.text();
+      let content: string;
+      
+      // Handle Excel files
+      const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+      if (isExcel) {
+        setUploadProgress({ stage: 'reading', message: 'Converting Excel to CSV...', progress: 15 });
+        content = await parseExcelToCSV(file);
+      } else {
+        content = await file.text();
+      }
       
       setUploadProgress({ stage: 'parsing', message: 'Parsing data...', progress: 30 });
       
@@ -59,12 +89,27 @@ export function MonthlyFileUploadZone({ onUploadComplete, className }: MonthlyFi
 
       setUploadProgress({ stage: 'uploading', message: 'Processing units...', progress: 60 });
 
-      // Process units in batches
+      // Process units in batches with time estimation
       const batchSize = 100;
+      const totalBatches = Math.ceil(units.length / batchSize);
+      let processedBatches = 0;
+      
       for (let i = 0; i < units.length; i += batchSize) {
         const batch = units.slice(i, i + batchSize);
         const progress = 60 + ((i / units.length) * 35);
-        setUploadProgress({ stage: 'uploading', message: `Processing units ${i + 1}-${Math.min(i + batchSize, units.length)}...`, progress });
+        
+        // Calculate estimated time remaining
+        const elapsedTime = (Date.now() - uploadStartTime.current) / 1000;
+        const progressFraction = (processedBatches + 1) / totalBatches;
+        const estimatedTotalTime = elapsedTime / progressFraction;
+        const estimatedTimeRemaining = Math.max(0, estimatedTotalTime - elapsedTime);
+        
+        setUploadProgress({ 
+          stage: 'uploading', 
+          message: `Processing units ${i + 1}-${Math.min(i + batchSize, units.length)}...`, 
+          progress,
+          estimatedTimeRemaining: processedBatches > 0 ? estimatedTimeRemaining : undefined
+        });
 
         // Upsert to units_canonical
         const canonicalRecords = batch.map(unit => ({
@@ -98,6 +143,8 @@ export function MonthlyFileUploadZone({ onUploadComplete, className }: MonthlyFi
           .upsert(canonicalRecords, { onConflict: 'trgid' });
 
         if (canonicalError) throw canonicalError;
+        
+        processedBatches++;
 
         // Insert lifecycle events
         const lifecycleEvents: any[] = [];
@@ -295,13 +342,19 @@ export function MonthlyFileUploadZone({ onUploadComplete, className }: MonthlyFi
             <div className="w-full max-w-xs space-y-2">
               <p className="text-sm font-medium">{uploadProgress.message}</p>
               <Progress value={uploadProgress.progress} className="h-2" />
+              {uploadProgress.estimatedTimeRemaining !== undefined && uploadProgress.estimatedTimeRemaining > 0 && (
+                <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  <span>{formatTimeRemaining(uploadProgress.estimatedTimeRemaining)}</span>
+                </div>
+              )}
             </div>
           ) : (
             <>
               <div>
                 <p className="text-sm font-medium">Drop monthly files here or click to upload</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Files will be stored as Monthly data for quarterly review
+                  Supports CSV and Excel files (.csv, .xlsx, .xls)
                 </p>
               </div>
             </>

@@ -3,10 +3,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Trash2, Edit2, Check, X, FileText } from 'lucide-react';
+import { Trash2, Edit2, Check, X, FileText, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Database } from '@/integrations/supabase/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 type FileType = Database['public']['Enums']['file_type'];
 
@@ -19,6 +30,7 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data: files, isLoading } = useQuery({
     queryKey: ['file-uploads', fileType],
@@ -35,10 +47,7 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
   });
 
   const handleDelete = async (fileId: string, fileName: string) => {
-    if (!confirm(`Are you sure you want to delete "${fileName}"? This will also delete all associated data.`)) {
-      return;
-    }
-
+    setDeletingId(fileId);
     try {
       // Delete associated data first
       await supabase.from('lifecycle_events').delete().eq('file_upload_id', fileId);
@@ -57,6 +66,8 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
     } catch (error) {
       console.error('Error deleting file:', error);
       toast.error('Failed to delete file');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -157,14 +168,39 @@ export function TabFileManager({ fileType, onFilesChanged }: TabFileManagerProps
                     >
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8"
-                      onClick={() => handleDelete(file.id, file.file_name)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8"
+                          disabled={deletingId === file.id}
+                        >
+                          {deletingId === file.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete File?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete <strong>{file.file_name}</strong> and all {file.row_count?.toLocaleString()} rows of data associated with it. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(file.id, file.file_name)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </>
                 )}
               </div>

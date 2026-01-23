@@ -1,28 +1,57 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { parseCSV, ParsedUnit } from '@/lib/csvParser';
 import { determineFileType, parseFileBusinessDate, getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import * as XLSX from 'xlsx';
 
 export interface UploadProgress {
   stage: 'reading' | 'parsing' | 'uploading' | 'complete' | 'error';
   message: string;
   progress: number;
+  estimatedTimeRemaining?: number; // in seconds
+}
+
+function formatTimeRemaining(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.ceil(seconds)}s remaining`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.ceil(seconds % 60);
+  return `${minutes}m ${secs}s remaining`;
 }
 
 export function useFileUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const { toast } = useToast();
+  const uploadStartTime = useRef<number>(0);
+
+  const parseExcelToCSV = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    return XLSX.utils.sheet_to_csv(worksheet);
+  };
 
   const uploadFile = useCallback(async (file: File) => {
     setIsUploading(true);
+    uploadStartTime.current = Date.now();
     setUploadProgress({ stage: 'reading', message: 'Reading file...', progress: 10 });
 
     try {
-      // Read file content
-      const content = await file.text();
+      let content: string;
+      
+      // Handle Excel files
+      const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+      if (isExcel) {
+        setUploadProgress({ stage: 'reading', message: 'Converting Excel to CSV...', progress: 15 });
+        content = await parseExcelToCSV(file);
+      } else {
+        content = await file.text();
+      }
       
       setUploadProgress({ stage: 'parsing', message: 'Parsing data...', progress: 30 });
       
@@ -63,14 +92,27 @@ export function useFileUpload() {
 
       if (fileError) throw fileError;
 
-      setUploadProgress({ stage: 'uploading', message: 'Processing units...', progress: 60 });
-
-      // Process units in batches
+      // Process units in batches with time estimation
       const batchSize = 100;
+      const totalBatches = Math.ceil(units.length / batchSize);
+      let processedBatches = 0;
+      
       for (let i = 0; i < units.length; i += batchSize) {
         const batch = units.slice(i, i + batchSize);
         const progress = 60 + ((i / units.length) * 35);
-        setUploadProgress({ stage: 'uploading', message: `Processing units ${i + 1}-${Math.min(i + batchSize, units.length)}...`, progress });
+        
+        // Calculate estimated time remaining
+        const elapsedTime = (Date.now() - uploadStartTime.current) / 1000;
+        const progressFraction = (processedBatches + 1) / totalBatches;
+        const estimatedTotalTime = elapsedTime / progressFraction;
+        const estimatedTimeRemaining = Math.max(0, estimatedTotalTime - elapsedTime);
+        
+        setUploadProgress({ 
+          stage: 'uploading', 
+          message: `Processing units ${i + 1}-${Math.min(i + batchSize, units.length)}...`, 
+          progress,
+          estimatedTimeRemaining: processedBatches > 0 ? estimatedTimeRemaining : undefined
+        });
 
         // Upsert to units_canonical
         const canonicalRecords = batch.map(unit => ({
@@ -217,6 +259,8 @@ export function useFileUpload() {
             if (feeError) console.error('Fee insert error:', feeError);
           }
         }
+        
+        processedBatches++;
       }
 
       // Mark file as processed
@@ -254,5 +298,6 @@ export function useFileUpload() {
     uploadFile,
     isUploading,
     uploadProgress,
+    formatTimeRemaining,
   };
 }
