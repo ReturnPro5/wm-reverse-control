@@ -37,57 +37,66 @@ async function readFileInChunks(file: File, onProgress?: (percent: number) => vo
   return chunks.join('');
 }
 
-// Read Excel file with streaming for large files
+// Read Excel file - let browser handle large files natively
 async function readExcelFile(file: File, onProgress?: (percent: number) => void): Promise<string> {
-  const fileSize = file.size;
+  const fileSizeMB = file.size / (1024 * 1024);
   
-  // For Excel files, we need the full buffer, but we can read it in chunks
-  const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+  if (onProgress) onProgress(10);
   
-  if (fileSize < CHUNK_SIZE) {
+  try {
+    // Let browser handle the file reading - it's optimized for this
+    console.log(`Reading Excel file (${fileSizeMB.toFixed(1)} MB)...`);
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    return XLSX.utils.sheet_to_csv(worksheet);
-  }
-  
-  // Large Excel file - read progressively
-  const chunks: Uint8Array[] = [];
-  let offset = 0;
-  
-  while (offset < fileSize) {
-    const chunk = file.slice(offset, offset + CHUNK_SIZE);
-    const buffer = await chunk.arrayBuffer();
-    chunks.push(new Uint8Array(buffer));
-    offset += CHUNK_SIZE;
     
-    if (onProgress) {
-      onProgress(Math.min((offset / fileSize) * 50, 50)); // 50% for reading
+    if (onProgress) onProgress(40);
+    console.log(`File loaded into memory, parsing workbook...`);
+    
+    // Use memory-efficient options for large files
+    const workbook = XLSX.read(arrayBuffer, { 
+      type: 'array',
+      dense: true, // More memory efficient for large sequential data
+      cellFormula: false, // Skip formula parsing
+      cellHTML: false, // Skip HTML parsing
+      cellText: false, // Skip text generation
+      cellStyles: false, // Skip style parsing
+    });
+    
+    if (onProgress) onProgress(70);
+    
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      throw new Error('Excel file has no sheets');
     }
     
-    // Yield to prevent UI blocking
-    await new Promise(resolve => setTimeout(resolve, 0));
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    
+    if (!worksheet) {
+      throw new Error(`Worksheet "${firstSheetName}" is empty`);
+    }
+    
+    console.log(`Converting sheet "${firstSheetName}" to CSV...`);
+    if (onProgress) onProgress(85);
+    
+    const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+    
+    if (!csvContent || csvContent.trim().length === 0) {
+      throw new Error('Excel sheet converted to empty CSV');
+    }
+    
+    console.log(`CSV conversion complete, ${csvContent.length} characters`);
+    if (onProgress) onProgress(95);
+    
+    return csvContent;
+  } catch (error) {
+    console.error('Excel parsing error:', error);
+    if (error instanceof Error) {
+      if (error.message.includes('memory') || error.message.includes('allocation')) {
+        throw new Error(`File too large for browser memory (${fileSizeMB.toFixed(0)} MB). Try saving as CSV in Excel first.`);
+      }
+      throw error;
+    }
+    throw new Error(`Failed to parse Excel file: ${String(error)}`);
   }
-  
-  // Combine chunks
-  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-  const combined = new Uint8Array(totalLength);
-  let position = 0;
-  for (const chunk of chunks) {
-    combined.set(chunk, position);
-    position += chunk.length;
-  }
-  
-  if (onProgress) onProgress(60);
-  
-  const workbook = XLSX.read(combined, { type: 'array' });
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
-  
-  if (onProgress) onProgress(80);
-  
-  return XLSX.utils.sheet_to_csv(worksheet);
 }
 
 export interface UploadProgress {
