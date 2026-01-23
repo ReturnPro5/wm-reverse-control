@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Upload, File, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, File, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFileUpload, UploadProgress } from '@/hooks/useFileUpload';
 import { Progress } from '@/components/ui/progress';
@@ -7,6 +7,15 @@ import { Progress } from '@/components/ui/progress';
 interface FileUploadZoneProps {
   onUploadComplete?: () => void;
   className?: string;
+}
+
+function formatTimeRemaining(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.ceil(seconds)}s remaining`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.ceil(seconds % 60);
+  return `${minutes}m ${secs}s remaining`;
 }
 
 export function FileUploadZone({ onUploadComplete, className }: FileUploadZoneProps) {
@@ -28,11 +37,11 @@ export function FileUploadZone({ onUploadComplete, className }: FileUploadZonePr
     setIsDragging(false);
     
     const files = Array.from(e.dataTransfer.files);
-    const csvOrExcel = files.filter(f => 
+    const supportedFiles = files.filter(f => 
       f.name.endsWith('.csv') || f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
     );
     
-    for (const file of csvOrExcel) {
+    for (const file of supportedFiles) {
       await uploadFile(file);
     }
     
@@ -95,13 +104,19 @@ export function FileUploadZone({ onUploadComplete, className }: FileUploadZonePr
             <div className="w-full max-w-xs space-y-2">
               <p className="text-sm font-medium">{uploadProgress.message}</p>
               <Progress value={uploadProgress.progress} className="h-2" />
+              {uploadProgress.estimatedTimeRemaining !== undefined && uploadProgress.estimatedTimeRemaining > 0 && (
+                <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  <span>{formatTimeRemaining(uploadProgress.estimatedTimeRemaining)}</span>
+                </div>
+              )}
             </div>
           ) : (
             <>
               <div>
                 <p className="text-sm font-medium">Drop files here or click to upload</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Supports CSV and Excel files
+                  Supports CSV and Excel files (.csv, .xlsx, .xls)
                 </p>
               </div>
             </>
