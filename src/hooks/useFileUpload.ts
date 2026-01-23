@@ -6,6 +6,90 @@ import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
 
+// Read file in chunks to handle large files without memory issues
+async function readFileInChunks(file: File, onProgress?: (percent: number) => void): Promise<string> {
+  const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+  const fileSize = file.size;
+  
+  if (fileSize < CHUNK_SIZE) {
+    // Small file, read directly
+    return await file.text();
+  }
+  
+  // Large file, read in chunks using streaming
+  const chunks: string[] = [];
+  let offset = 0;
+  
+  while (offset < fileSize) {
+    const chunk = file.slice(offset, offset + CHUNK_SIZE);
+    const text = await chunk.text();
+    chunks.push(text);
+    offset += CHUNK_SIZE;
+    
+    if (onProgress) {
+      onProgress(Math.min((offset / fileSize) * 100, 100));
+    }
+    
+    // Yield to prevent UI blocking
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  
+  return chunks.join('');
+}
+
+// Read Excel file with streaming for large files
+async function readExcelFile(file: File, onProgress?: (percent: number) => void): Promise<string> {
+  const fileSize = file.size;
+  
+  // For Excel files, we need the full buffer, but we can read it in chunks
+  const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+  
+  if (fileSize < CHUNK_SIZE) {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    return XLSX.utils.sheet_to_csv(worksheet);
+  }
+  
+  // Large Excel file - read progressively
+  const chunks: Uint8Array[] = [];
+  let offset = 0;
+  
+  while (offset < fileSize) {
+    const chunk = file.slice(offset, offset + CHUNK_SIZE);
+    const buffer = await chunk.arrayBuffer();
+    chunks.push(new Uint8Array(buffer));
+    offset += CHUNK_SIZE;
+    
+    if (onProgress) {
+      onProgress(Math.min((offset / fileSize) * 50, 50)); // 50% for reading
+    }
+    
+    // Yield to prevent UI blocking
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  
+  // Combine chunks
+  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const combined = new Uint8Array(totalLength);
+  let position = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, position);
+    position += chunk.length;
+  }
+  
+  if (onProgress) onProgress(60);
+  
+  const workbook = XLSX.read(combined, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[firstSheetName];
+  
+  if (onProgress) onProgress(80);
+  
+  return XLSX.utils.sheet_to_csv(worksheet);
+}
+
 export interface UploadProgress {
   stage: 'reading' | 'parsing' | 'uploading' | 'complete' | 'error';
   message: string;
@@ -28,29 +112,41 @@ export function useFileUpload() {
   const { toast } = useToast();
   const uploadStartTime = useRef<number>(0);
 
-  const parseExcelToCSV = async (file: File): Promise<string> => {
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    return XLSX.utils.sheet_to_csv(worksheet);
-  };
 
   const uploadFile = useCallback(async (file: File) => {
     setIsUploading(true);
     uploadStartTime.current = Date.now();
-    setUploadProgress({ stage: 'reading', message: 'Reading file...', progress: 10 });
+    
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    setUploadProgress({ 
+      stage: 'reading', 
+      message: `Reading file (${fileSizeMB} MB)...`, 
+      progress: 5 
+    });
 
     try {
       let content: string;
       
-      // Handle Excel files
+      // Handle Excel files with progress callback
       const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
       if (isExcel) {
-        setUploadProgress({ stage: 'reading', message: 'Converting Excel to CSV...', progress: 15 });
-        content = await parseExcelToCSV(file);
+        setUploadProgress({ stage: 'reading', message: `Converting Excel (${fileSizeMB} MB)...`, progress: 10 });
+        content = await readExcelFile(file, (percent) => {
+          setUploadProgress({ 
+            stage: 'reading', 
+            message: `Reading Excel: ${Math.round(percent)}%`, 
+            progress: 5 + (percent * 0.2) 
+          });
+        });
       } else {
-        content = await file.text();
+        // CSV with progress for large files
+        content = await readFileInChunks(file, (percent) => {
+          setUploadProgress({ 
+            stage: 'reading', 
+            message: `Reading file: ${Math.round(percent)}%`, 
+            progress: 5 + (percent * 0.2) 
+          });
+        });
       }
       
       setUploadProgress({ stage: 'parsing', message: 'Parsing data...', progress: 30 });
