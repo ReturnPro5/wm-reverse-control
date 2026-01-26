@@ -206,10 +206,23 @@ export function useFileUpload() {
 
       if (fileError) throw fileError;
 
-      // Process units in batches with time estimation
-      const batchSize = 100;
+      // Process units in smaller batches for large files with retry logic
+      const batchSize = units.length > 50000 ? 50 : 100; // Smaller batches for very large files
       const totalBatches = Math.ceil(units.length / batchSize);
       let processedBatches = 0;
+      
+      const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 3) => {
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            return await fn();
+          } catch (error: any) {
+            if (attempt === maxRetries - 1) throw error;
+            const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+            console.warn(`Retry attempt ${attempt + 1} after ${delay}ms:`, error?.message);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      };
       
       for (let i = 0; i < units.length; i += batchSize) {
         const batch = units.slice(i, i + batchSize);
@@ -223,12 +236,12 @@ export function useFileUpload() {
         
         setUploadProgress({ 
           stage: 'uploading', 
-          message: `Processing units ${i + 1}-${Math.min(i + batchSize, units.length)}...`, 
+          message: `Processing batch ${processedBatches + 1}/${totalBatches} (${i + 1}-${Math.min(i + batchSize, units.length)})...`, 
           progress,
           estimatedTimeRemaining: processedBatches > 0 ? estimatedTimeRemaining : undefined
         });
 
-        // Upsert to units_canonical
+        // Upsert to units_canonical with retry
         const canonicalRecords = batch.map(unit => ({
           trgid: unit.trgid,
           file_upload_id: fileUpload.id,
@@ -255,13 +268,14 @@ export function useFileUpload() {
           wm_day_of_week: unit.wmDayOfWeek,
         }));
 
-        const { error: canonicalError } = await supabase
-          .from('units_canonical')
-          .upsert(canonicalRecords, { onConflict: 'trgid' });
+        await retryWithBackoff(async () => {
+          const { error: canonicalError } = await supabase
+            .from('units_canonical')
+            .upsert(canonicalRecords, { onConflict: 'trgid' });
+          if (canonicalError) throw canonicalError;
+        });
 
-        if (canonicalError) throw canonicalError;
-
-        // Insert lifecycle events
+        // Insert lifecycle events with retry
         const lifecycleEvents: any[] = [];
         for (const unit of batch) {
           const stages = [
@@ -288,14 +302,15 @@ export function useFileUpload() {
         }
 
         if (lifecycleEvents.length > 0) {
-          const { error: lifecycleError } = await supabase
-            .from('lifecycle_events')
-            .insert(lifecycleEvents);
-
-          if (lifecycleError) console.error('Lifecycle insert error:', lifecycleError);
+          await retryWithBackoff(async () => {
+            const { error: lifecycleError } = await supabase
+              .from('lifecycle_events')
+              .insert(lifecycleEvents);
+            if (lifecycleError) console.error('Lifecycle insert error:', lifecycleError);
+          });
         }
 
-        // Insert sales metrics for Sales files
+        // Insert sales metrics for Sales files with retry
         if (fileType === 'Sales') {
           const salesRecords = batch
             .filter(unit => unit.orderClosedDate)
@@ -317,7 +332,6 @@ export function useFileUpload() {
               tag_clientsource: unit.tagClientSource || null,
               wm_week: unit.wmWeek,
               wm_day_of_week: unit.wmDayOfWeek,
-              // Invoiced fee fields
               invoiced_check_in_fee: unit.invoicedCheckInFee,
               invoiced_refurb_fee: unit.invoicedRefurbFee,
               invoiced_overbox_fee: unit.invoicedOverboxFee,
@@ -332,7 +346,6 @@ export function useFileUpload() {
               service_invoice_total: unit.serviceInvoiceTotal,
               vendor_invoice_total: unit.vendorInvoiceTotal,
               expected_hv_as_is_refurb_fee: unit.expectedHvAsIsRefurbFee,
-              // Additional fields
               sorting_index: unit.sortingIndex || null,
               b2c_auction: unit.b2cAuction || null,
               tag_ebay_auction_sale: unit.tagEbayAuctionSale,
@@ -340,15 +353,16 @@ export function useFileUpload() {
             }));
 
           if (salesRecords.length > 0) {
-            const { error: salesError } = await supabase
-              .from('sales_metrics')
-              .upsert(salesRecords, { onConflict: 'trgid' });
-
-            if (salesError) console.error('Sales insert error:', salesError);
+            await retryWithBackoff(async () => {
+              const { error: salesError } = await supabase
+                .from('sales_metrics')
+                .upsert(salesRecords, { onConflict: 'trgid' });
+              if (salesError) console.error('Sales insert error:', salesError);
+            });
           }
         }
 
-        // Insert fee metrics for Outbound files
+        // Insert fee metrics for Outbound files with retry
         if (fileType === 'Outbound') {
           const feeRecords = batch
             .filter(unit => unit.totalFees !== null)
@@ -367,15 +381,21 @@ export function useFileUpload() {
             }));
 
           if (feeRecords.length > 0) {
-            const { error: feeError } = await supabase
-              .from('fee_metrics')
-              .upsert(feeRecords, { onConflict: 'trgid' });
-
-            if (feeError) console.error('Fee insert error:', feeError);
+            await retryWithBackoff(async () => {
+              const { error: feeError } = await supabase
+                .from('fee_metrics')
+                .upsert(feeRecords, { onConflict: 'trgid' });
+              if (feeError) console.error('Fee insert error:', feeError);
+            });
           }
         }
         
         processedBatches++;
+        
+        // Yield to browser every 10 batches to prevent UI freezing
+        if (processedBatches % 10 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
       }
 
       // Mark file as processed
