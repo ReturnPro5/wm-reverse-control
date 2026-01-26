@@ -21,6 +21,7 @@ export interface TabFilters {
   tagClientOwnerships: string[];
   tagClientSources: string[];
   marketplacesSoldOn: string[];
+  orderTypesSoldOn: string[];
 }
 
 export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv' | 'quarterly-review';
@@ -55,6 +56,7 @@ const defaultTabFilters: TabFilters = {
   tagClientOwnerships: [],
   tagClientSources: [],
   marketplacesSoldOn: [],
+  orderTypesSoldOn: [],
 };
 
 const FilterContext = createContext<FilterContextType | undefined>(undefined);

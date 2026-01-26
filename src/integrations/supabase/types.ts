@@ -175,6 +175,7 @@ export type Database = {
           marketplace_profile_sold_on: string | null
           master_program_name: string | null
           order_closed_date: string
+          order_type_sold_on: string | null
           program_name: string | null
           refund_amount: number | null
           sale_price: number
@@ -215,6 +216,7 @@ export type Database = {
           marketplace_profile_sold_on?: string | null
           master_program_name?: string | null
           order_closed_date: string
+          order_type_sold_on?: string | null
           program_name?: string | null
           refund_amount?: number | null
           sale_price?: number
@@ -255,6 +257,7 @@ export type Database = {
           marketplace_profile_sold_on?: string | null
           master_program_name?: string | null
           order_closed_date?: string
+          order_type_sold_on?: string | null
           program_name?: string | null
           refund_amount?: number | null
           sale_price?: number

@@ -336,6 +336,7 @@ export function useFileUpload() {
               sorting_index: unit.sortingIndex || null,
               b2c_auction: unit.b2cAuction || null,
               tag_ebay_auction_sale: unit.tagEbayAuctionSale,
+              order_type_sold_on: unit.orderTypeSoldOn || null,
             }));
 
           if (salesRecords.length > 0) {

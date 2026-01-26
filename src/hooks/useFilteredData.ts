@@ -43,6 +43,9 @@ function applyFilters<T extends { eq: any; not: any; in: any }>(
   if (filters.marketplacesSoldOn.length > 0) {
     query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
   }
+  if (filters.orderTypesSoldOn.length > 0) {
+    query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
+  }
   if (filters.locationIds.length > 0) {
     query = query.in('location_id', filters.locationIds);
   }
@@ -114,6 +117,7 @@ export function useFilterOptions() {
         clientSources,
         marketplaces,
         fileTypes,
+        orderTypes,
       ] = await Promise.all([
         fetchAllDistinctValues('units_canonical', 'program_name'),
         fetchAllDistinctValues('units_canonical', 'master_program_name'),
@@ -124,6 +128,7 @@ export function useFilterOptions() {
         fetchAllDistinctValues('units_canonical', 'tag_clientsource'),
         fetchAllDistinctValues('sales_metrics', 'marketplace_profile_sold_on'),
         fetchAllDistinctValues('file_uploads', 'file_type'),
+        fetchAllDistinctValues('sales_metrics', 'order_type_sold_on'),
       ]);
 
       return {
@@ -136,6 +141,7 @@ export function useFilterOptions() {
         clientSources,
         marketplaces,
         fileTypes,
+        orderTypes,
       };
     },
     staleTime: 60000,
