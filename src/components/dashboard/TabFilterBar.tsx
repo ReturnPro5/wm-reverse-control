@@ -18,6 +18,7 @@ interface TabFilterBarProps {
   clientSources: string[];
   marketplaces: string[];
   fileTypes: string[];
+  orderTypes?: string[];
   onRefresh: () => void;
   className?: string;
 }
@@ -33,6 +34,7 @@ export function TabFilterBar({
   clientSources,
   marketplaces,
   fileTypes,
+  orderTypes = [],
   onRefresh,
   className,
 }: TabFilterBarProps) {
@@ -210,6 +212,17 @@ export function TabFilterBar({
               placeholder="Marketplace"
               className="w-full"
             />
+
+            {/* Order Type */}
+            {orderTypes.length > 0 && (
+              <MultiSelect
+                options={orderTypes.map(t => ({ value: t, label: t }))}
+                selected={filters.orderTypesSoldOn}
+                onChange={(values) => setFilter('orderTypesSoldOn', values)}
+                placeholder="Order Type"
+                className="w-full"
+              />
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

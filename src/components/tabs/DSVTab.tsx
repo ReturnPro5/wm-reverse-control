@@ -92,6 +92,7 @@ export function DSVTab() {
     clientSources: [],
     marketplaces: [],
     fileTypes: [],
+    orderTypes: [],
   };
 
   return (
@@ -113,6 +114,7 @@ export function DSVTab() {
         clientSources={options.clientSources}
         marketplaces={options.marketplaces}
         fileTypes={options.fileTypes}
+        orderTypes={options.orderTypes}
         onRefresh={refetch}
       />
 

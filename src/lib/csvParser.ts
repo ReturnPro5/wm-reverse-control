@@ -54,6 +54,7 @@ export interface ParsedUnit {
   sortingIndex: string;
   b2cAuction: string;
   tagEbayAuctionSale: boolean;
+  orderTypeSoldOn: string;
 }
 
 function parseDate(value: string): Date | null {
@@ -251,6 +252,7 @@ export function parseCSV(content: string, fileName: string): { units: ParsedUnit
     const sortingIndex = getValue('SortingIndex') || getValue('Sorting Index') || getValue('sorting_index') || '';
     const b2cAuction = getValue('B2C_Auction') || getValue('B2CAuction') || getValue('B2C Auction') || '';
     const tagEbayAuctionSale = parseBoolean(getValue('Tag_EbayAuctionSale') || getValue('TagEbayAuctionSale') || getValue('Tag Ebay Auction Sale'));
+    const orderTypeSoldOn = getValue('Order Type Sold On') || getValue('OrderTypeSoldOn') || getValue('Order_Type_Sold_On') || '';
     
     const orderClosedDate = parseDate(getValue('OrderClosedDate'));
     
@@ -310,6 +312,7 @@ export function parseCSV(content: string, fileName: string): { units: ParsedUnit
       sortingIndex,
       b2cAuction,
       tagEbayAuctionSale,
+      orderTypeSoldOn,
     };
     
     unit.currentStage = determineCurrentStage(unit);

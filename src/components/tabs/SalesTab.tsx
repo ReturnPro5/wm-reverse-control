@@ -119,6 +119,7 @@ export function SalesTab() {
     clientSources: [],
     marketplaces: [],
     fileTypes: [],
+    orderTypes: [],
   };
 
   return (
@@ -140,6 +141,7 @@ export function SalesTab() {
         clientSources={options.clientSources}
         marketplaces={options.marketplaces}
         fileTypes={options.fileTypes}
+        orderTypes={options.orderTypes}
         onRefresh={refetch}
       />
 
