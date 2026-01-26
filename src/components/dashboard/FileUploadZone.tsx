@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
-import { Upload, File, CheckCircle, AlertCircle, Loader2, Clock } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, Loader2, Clock, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useFileUpload, UploadProgress } from '@/hooks/useFileUpload';
+import { useFileUpload } from '@/hooks/useFileUpload';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 
 interface FileUploadZoneProps {
   onUploadComplete?: () => void;
@@ -20,7 +21,7 @@ function formatTimeRemaining(seconds: number): string {
 
 export function FileUploadZone({ onUploadComplete, className }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const { uploadFile, isUploading, uploadProgress } = useFileUpload();
+  const { uploadFile, cancelUpload, isUploading, uploadProgress } = useFileUpload();
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -109,6 +110,20 @@ export function FileUploadZone({ onUploadComplete, className }: FileUploadZonePr
                   <Clock className="h-3 w-3" />
                   <span>{formatTimeRemaining(uploadProgress.estimatedTimeRemaining)}</span>
                 </div>
+              )}
+              {isUploading && uploadProgress.stage !== 'complete' && uploadProgress.stage !== 'error' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cancelUpload();
+                  }}
+                  className="mt-2 pointer-events-auto"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancel Upload
+                </Button>
               )}
             </div>
           ) : (
