@@ -6,6 +6,10 @@ import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
 
+// Constants for large file handling
+const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB
+const VERY_LARGE_FILE_THRESHOLD = 200 * 1024 * 1024; // 200MB
+
 // Read file in chunks to handle large files without memory issues
 async function readFileInChunks(file: File, onProgress?: (percent: number) => void): Promise<string> {
   const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
@@ -37,31 +41,62 @@ async function readFileInChunks(file: File, onProgress?: (percent: number) => vo
   return chunks.join('');
 }
 
-// Read Excel file - let browser handle large files natively
-async function readExcelFile(file: File, onProgress?: (percent: number) => void): Promise<string> {
+// Read Excel file with aggressive memory management for large files
+async function readExcelFile(
+  file: File, 
+  onProgress?: (percent: number) => void,
+  abortSignal?: AbortSignal
+): Promise<string> {
   const fileSizeMB = file.size / (1024 * 1024);
+  const isVeryLarge = file.size > VERY_LARGE_FILE_THRESHOLD;
   
-  if (onProgress) onProgress(10);
+  if (onProgress) onProgress(5);
+  
+  // Check for abort before starting
+  if (abortSignal?.aborted) {
+    throw new Error('Upload cancelled');
+  }
   
   try {
-    // Let browser handle the file reading - it's optimized for this
     console.log(`Reading Excel file (${fileSizeMB.toFixed(1)} MB)...`);
+    
+    // For very large files, warn user
+    if (isVeryLarge) {
+      console.warn(`Very large file detected (${fileSizeMB.toFixed(0)}MB). This may take several minutes.`);
+    }
+    
+    // Read file with progress tracking
     const arrayBuffer = await file.arrayBuffer();
     
-    if (onProgress) onProgress(40);
+    if (abortSignal?.aborted) {
+      throw new Error('Upload cancelled');
+    }
+    
+    if (onProgress) onProgress(30);
     console.log(`File loaded into memory, parsing workbook...`);
     
-    // Use memory-efficient options for large files
-    const workbook = XLSX.read(arrayBuffer, { 
-      type: 'array',
-      dense: true, // More memory efficient for large sequential data
-      cellFormula: false, // Skip formula parsing
-      cellHTML: false, // Skip HTML parsing
-      cellText: false, // Skip text generation
-      cellStyles: false, // Skip style parsing
-    });
+    // Yield to browser before heavy parsing
+    await new Promise(resolve => setTimeout(resolve, 50));
     
-    if (onProgress) onProgress(70);
+    // Use most memory-efficient options for large files
+    const parseOptions: XLSX.ParsingOptions = {
+      type: 'array',
+      dense: true,
+      cellFormula: false,
+      cellHTML: false,
+      cellText: false,
+      cellStyles: false,
+      cellDates: true,
+      sheetRows: isVeryLarge ? 0 : undefined, // Read all rows
+    };
+    
+    const workbook = XLSX.read(arrayBuffer, parseOptions);
+    
+    if (abortSignal?.aborted) {
+      throw new Error('Upload cancelled');
+    }
+    
+    if (onProgress) onProgress(60);
     
     if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
       throw new Error('Excel file has no sheets');
@@ -74,24 +109,32 @@ async function readExcelFile(file: File, onProgress?: (percent: number) => void)
       throw new Error(`Worksheet "${firstSheetName}" is empty`);
     }
     
-    console.log(`Converting sheet "${firstSheetName}" to CSV...`);
-    if (onProgress) onProgress(85);
+    // Yield again before CSV conversion
+    await new Promise(resolve => setTimeout(resolve, 50));
     
-    const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+    console.log(`Converting sheet "${firstSheetName}" to CSV...`);
+    if (onProgress) onProgress(75);
+    
+    const csvContent = XLSX.utils.sheet_to_csv(worksheet, {
+      blankrows: false, // Skip blank rows to reduce size
+    });
     
     if (!csvContent || csvContent.trim().length === 0) {
       throw new Error('Excel sheet converted to empty CSV');
     }
     
-    console.log(`CSV conversion complete, ${csvContent.length} characters`);
+    console.log(`CSV conversion complete, ${(csvContent.length / 1024 / 1024).toFixed(1)} MB`);
     if (onProgress) onProgress(95);
     
     return csvContent;
   } catch (error) {
     console.error('Excel parsing error:', error);
     if (error instanceof Error) {
-      if (error.message.includes('memory') || error.message.includes('allocation')) {
-        throw new Error(`File too large for browser memory (${fileSizeMB.toFixed(0)} MB). Try saving as CSV in Excel first.`);
+      if (error.message === 'Upload cancelled') {
+        throw error;
+      }
+      if (error.message.includes('memory') || error.message.includes('allocation') || error.message.includes('heap')) {
+        throw new Error(`File too large for browser memory (${fileSizeMB.toFixed(0)} MB). Please save as CSV in Excel first, or try closing other browser tabs.`);
       }
       throw error;
     }
@@ -120,13 +163,41 @@ export function useFileUpload() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const { toast } = useToast();
   const uploadStartTime = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
+  const cancelUpload = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsUploading(false);
+    setUploadProgress(null);
+    toast({
+      title: 'Upload Cancelled',
+      description: 'The file upload was cancelled.',
+    });
+  }, [toast]);
 
   const uploadFile = useCallback(async (file: File) => {
+    // Create new abort controller for this upload
+    abortControllerRef.current = new AbortController();
+    const abortSignal = abortControllerRef.current.signal;
+    
     setIsUploading(true);
     uploadStartTime.current = Date.now();
     
     const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    const isLargeFile = file.size > LARGE_FILE_THRESHOLD;
+    const isVeryLargeFile = file.size > VERY_LARGE_FILE_THRESHOLD;
+    
+    // Warn user about large files
+    if (isVeryLargeFile) {
+      toast({
+        title: 'Large File Detected',
+        description: `Processing ${fileSizeMB} MB file. This may take 5-10 minutes. Please keep this tab active.`,
+      });
+    }
+    
     setUploadProgress({ 
       stage: 'reading', 
       message: `Reading file (${fileSizeMB} MB)...`, 
@@ -134,6 +205,9 @@ export function useFileUpload() {
     });
 
     try {
+      // Check for abort
+      if (abortSignal.aborted) throw new Error('Upload cancelled');
+      
       let content: string;
       
       // Handle Excel files with progress callback
@@ -146,10 +220,11 @@ export function useFileUpload() {
             message: `Reading Excel: ${Math.round(percent)}%`, 
             progress: 5 + (percent * 0.2) 
           });
-        });
+        }, abortSignal);
       } else {
         // CSV with progress for large files
         content = await readFileInChunks(file, (percent) => {
+          if (abortSignal.aborted) return;
           setUploadProgress({ 
             stage: 'reading', 
             message: `Reading file: ${Math.round(percent)}%`, 
@@ -158,14 +233,22 @@ export function useFileUpload() {
         });
       }
       
+      if (abortSignal.aborted) throw new Error('Upload cancelled');
+      
       setUploadProgress({ stage: 'parsing', message: 'Parsing data...', progress: 30 });
+      
+      // Yield to browser before heavy parsing
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Log first few lines for debugging
       const previewLines = content.split('\n').slice(0, 3);
       console.log('File preview - first 3 lines:', previewLines);
+      console.log(`Content size: ${(content.length / 1024 / 1024).toFixed(1)} MB`);
       
       // Parse CSV
       const { units, fileType, businessDate } = parseCSV(content, file.name);
+      
+      if (abortSignal.aborted) throw new Error('Upload cancelled');
       
       if (units.length === 0) {
         // Check if it's a header issue
@@ -175,6 +258,8 @@ export function useFileUpload() {
         console.error('No valid data found. Headers preview:', headerPreview);
         throw new Error(`No valid data found. The file must have a TRGID column. Check console for details. First columns: ${headerPreview?.substring(0, 100)}...`);
       }
+      
+      console.log(`Parsed ${units.length} units from file`);
 
       // Show info toast if file type was auto-detected from smart fallback
       const detectedType = determineFileType(file.name);
@@ -207,17 +292,24 @@ export function useFileUpload() {
       if (fileError) throw fileError;
 
       // Process units in smaller batches for large files with retry logic
-      const batchSize = units.length > 50000 ? 50 : 100; // Smaller batches for very large files
+      // Use even smaller batches for very large files to prevent timeouts
+      const batchSize = units.length > 100000 ? 25 : units.length > 50000 ? 50 : 100;
       const totalBatches = Math.ceil(units.length / batchSize);
       let processedBatches = 0;
       
-      const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 3) => {
+      console.log(`Processing ${units.length} units in ${totalBatches} batches of ${batchSize}`);
+      
+      const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 5) => {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
+          // Check for abort
+          if (abortSignal.aborted) throw new Error('Upload cancelled');
+          
           try {
             return await fn();
           } catch (error: any) {
+            if (error?.message === 'Upload cancelled') throw error;
             if (attempt === maxRetries - 1) throw error;
-            const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+            const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s, 16s
             console.warn(`Retry attempt ${attempt + 1} after ${delay}ms:`, error?.message);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
@@ -225,6 +317,9 @@ export function useFileUpload() {
       };
       
       for (let i = 0; i < units.length; i += batchSize) {
+        // Check for abort at start of each batch
+        if (abortSignal.aborted) throw new Error('Upload cancelled');
+        
         const batch = units.slice(i, i + batchSize);
         const progress = 60 + ((i / units.length) * 35);
         
@@ -236,7 +331,7 @@ export function useFileUpload() {
         
         setUploadProgress({ 
           stage: 'uploading', 
-          message: `Processing batch ${processedBatches + 1}/${totalBatches} (${i + 1}-${Math.min(i + batchSize, units.length)})...`, 
+          message: `Batch ${processedBatches + 1}/${totalBatches} (${i + 1}-${Math.min(i + batchSize, units.length)} of ${units.length})`, 
           progress,
           estimatedTimeRemaining: processedBatches > 0 ? estimatedTimeRemaining : undefined
         });
@@ -392,9 +487,11 @@ export function useFileUpload() {
         
         processedBatches++;
         
-        // Yield to browser every 10 batches to prevent UI freezing
-        if (processedBatches % 10 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
+        // Yield to browser MORE FREQUENTLY for large files to prevent freezing
+        // Every 5 batches for large files, every 10 for smaller
+        const yieldFrequency = units.length > 100000 ? 5 : 10;
+        if (processedBatches % yieldFrequency === 0) {
+          await new Promise(resolve => setTimeout(resolve, 10));
         }
       }
 
@@ -424,6 +521,7 @@ export function useFileUpload() {
 
       return { success: false, error };
     } finally {
+      abortControllerRef.current = null;
       setIsUploading(false);
       setTimeout(() => setUploadProgress(null), 3000);
     }
@@ -431,6 +529,7 @@ export function useFileUpload() {
 
   return {
     uploadFile,
+    cancelUpload,
     isUploading,
     uploadProgress,
     formatTimeRemaining,
