@@ -84,78 +84,44 @@ function filterOwnedPrograms<T extends { master_program_name?: string | null }>(
   });
 }
 
-// Helper to fetch all distinct values from a column with pagination
-async function fetchAllDistinctValues(
-  table: 'units_canonical' | 'sales_metrics' | 'file_uploads',
-  column: string
-): Promise<string[]> {
-  const allValues = new Set<string>();
-  let offset = 0;
-  const batchSize = 1000;
-  
-  while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(column)
-      .not(column, 'is', null)
-      .range(offset, offset + batchSize - 1);
-    
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    
-    data.forEach((row: any) => {
-      if (row[column]) allValues.add(row[column]);
-    });
-    
-    if (data.length < batchSize) break;
-    offset += batchSize;
-  }
-  
-  return Array.from(allValues);
-}
-
 export function useFilterOptions() {
   return useQuery({
     queryKey: ['filter-options-global'],
+    staleTime: 5 * 60 * 1000, // 5 minutes - matches other queries
+    refetchOnWindowFocus: false,
     queryFn: async () => {
-      const [
-        programs,
-        masterPrograms,
-        categories,
-        facilities,
-        locations,
-        ownerships,
-        clientSources,
-        marketplaces,
-        fileTypes,
-        orderTypes,
-      ] = await Promise.all([
-        fetchAllDistinctValues('units_canonical', 'program_name'),
-        fetchAllDistinctValues('units_canonical', 'master_program_name'),
-        fetchAllDistinctValues('units_canonical', 'category_name'),
-        fetchAllDistinctValues('units_canonical', 'facility'),
-        fetchAllDistinctValues('units_canonical', 'location_id'),
-        fetchAllDistinctValues('units_canonical', 'tag_client_ownership'),
-        fetchAllDistinctValues('units_canonical', 'tag_clientsource'),
-        fetchAllDistinctValues('sales_metrics', 'marketplace_profile_sold_on'),
-        fetchAllDistinctValues('file_uploads', 'file_type'),
-        fetchAllDistinctValues('sales_metrics', 'order_type_sold_on'),
-      ]);
+      // Use optimized RPC that gets all distinct values in a single query
+      const { data, error } = await supabase.rpc('get_filter_options');
+      
+      if (error) throw error;
+      
+      // Parse the JSON response
+      const options = data as {
+        programs: string[];
+        masterPrograms: string[];
+        categories: string[];
+        facilities: string[];
+        locations: string[];
+        ownerships: string[];
+        clientSources: string[];
+        marketplaces: string[];
+        fileTypes: string[];
+        orderTypes: string[];
+      };
 
       return {
-        programs,
-        masterPrograms,
-        categories,
-        facilities,
-        locations,
-        ownerships,
-        clientSources,
-        marketplaces,
-        fileTypes,
-        orderTypes,
+        programs: options.programs || [],
+        masterPrograms: options.masterPrograms || [],
+        categories: options.categories || [],
+        facilities: options.facilities || [],
+        locations: options.locations || [],
+        ownerships: options.ownerships || [],
+        clientSources: options.clientSources || [],
+        marketplaces: options.marketplaces || [],
+        fileTypes: options.fileTypes || [],
+        orderTypes: options.orderTypes || [],
       };
     },
-    staleTime: 60000,
   });
 }
 
