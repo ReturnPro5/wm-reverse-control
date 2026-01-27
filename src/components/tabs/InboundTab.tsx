@@ -19,7 +19,7 @@ import { useFilterOptions, useFilteredLifecycle } from '@/hooks/useFilteredData'
 import { useTabFilters } from '@/contexts/FilterContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { getWMWeekNumber } from '@/lib/wmWeek';
+import { getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
 
 const TAB_NAME = 'inbound' as const;
 
@@ -29,6 +29,15 @@ function getWMWeekFromDateString(dateStr: string | null): number | null {
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day, 12, 0, 0);
   return getWMWeekNumber(date);
+}
+
+// Calculate WM day of week from a date string (YYYY-MM-DD)
+// Returns 1-7 (Sat=1, Sun=2, Mon=3, Tue=4, Wed=5, Thu=6, Fri=7)
+function getWMDayOfWeekFromDateString(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  return getWMDayOfWeek(date);
 }
 
 export function InboundTab() {
@@ -88,7 +97,26 @@ export function InboundTab() {
       }
       
       const selectedWeeks = filters.wmWeeks;
+      const selectedDays = filters.wmDaysOfWeek;
       const hasWeekFilter = selectedWeeks.length > 0;
+      const hasDayFilter = selectedDays.length > 0;
+      
+      // Helper: check if a received_on date matches the week and day filters
+      const matchesFilters = (dateStr: string | null): boolean => {
+        if (!dateStr) return false;
+        
+        if (hasWeekFilter) {
+          const wmWeek = getWMWeekFromDateString(dateStr);
+          if (wmWeek === null || !selectedWeeks.includes(wmWeek)) return false;
+        }
+        
+        if (hasDayFilter) {
+          const wmDay = getWMDayOfWeekFromDateString(dateStr);
+          if (wmDay === null || !selectedDays.includes(wmDay)) return false;
+        }
+        
+        return true;
+      };
       
       // Deduplicate by trgid - keep the most recent date record
       const trgidMap = new Map<string, UnitRow>();
@@ -106,13 +134,10 @@ export function InboundTab() {
         }
       });
       
-      // Filter by WM week if filter is active - use received_on date for week assignment
+      // Filter by WM week AND day if filters are active - use received_on date for both
       let filteredUnits = Array.from(trgidMap.values());
-      if (hasWeekFilter) {
-        filteredUnits = filteredUnits.filter(unit => {
-          const wmWeek = getWMWeekFromDateString(unit.received_on);
-          return wmWeek !== null && selectedWeeks.includes(wmWeek);
-        });
+      if (hasWeekFilter || hasDayFilter) {
+        filteredUnits = filteredUnits.filter(unit => matchesFilters(unit.received_on));
       }
       
       // Calculate metrics from deduplicated data
