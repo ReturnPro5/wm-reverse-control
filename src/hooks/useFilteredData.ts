@@ -151,8 +151,19 @@ export function useFilterOptions() {
 export function useFilteredLifecycle(tabName: TabName = 'inbound') {
   const { filters } = useTabFilters(tabName);
 
+  // Create a stable query key from filter values
+  const filterKey = JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    wmDaysOfWeek: filters.wmDaysOfWeek,
+    programNames: filters.programNames,
+    facilities: filters.facilities,
+    categoryNames: filters.categoryNames,
+    tagClientOwnerships: filters.tagClientOwnerships,
+    excludedFileIds: filters.excludedFileIds,
+  });
+
   return useQuery({
-    queryKey: ['filtered-lifecycle-inbound-only', tabName, filters],
+    queryKey: ['filtered-lifecycle-inbound-only', tabName, filterKey],
     staleTime: 0,
     queryFn: async () => {
       // ALWAYS get only Inbound file IDs - lifecycle funnel is ONLY for Inbound files
@@ -267,8 +278,23 @@ export function useFilteredLifecycle(tabName: TabName = 'inbound') {
 export function useFilteredSales(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
 
+  // Create a stable query key from filter values to ensure proper cache invalidation
+  const filterKey = JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    wmDaysOfWeek: filters.wmDaysOfWeek,
+    programNames: filters.programNames,
+    facilities: filters.facilities,
+    categoryNames: filters.categoryNames,
+    tagClientOwnerships: filters.tagClientOwnerships,
+    marketplacesSoldOn: filters.marketplacesSoldOn,
+    orderTypesSoldOn: filters.orderTypesSoldOn,
+    locationIds: filters.locationIds,
+    excludedFileIds: filters.excludedFileIds,
+  });
+
   return useQuery({
-    queryKey: ['filtered-sales', tabName, filters],
+    queryKey: ['filtered-sales', tabName, filterKey],
+    staleTime: 0, // Always refetch when filters change
     queryFn: async () => {
       // Fetch all records using pagination to bypass 1000 row limit
       const allData: Tables<'sales_metrics'>[] = [];
@@ -303,8 +329,16 @@ export function useFilteredSales(tabName: TabName = 'sales') {
 export function useFilteredFees(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
 
+  const filterKey = JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    programNames: filters.programNames,
+    facilities: filters.facilities,
+    excludedFileIds: filters.excludedFileIds,
+  });
+
   return useQuery({
-    queryKey: ['filtered-fees', tabName, filters],
+    queryKey: ['filtered-fees', tabName, filterKey],
+    staleTime: 0,
     queryFn: async () => {
       let query = supabase.from('fee_metrics').select('*');
       
@@ -330,8 +364,15 @@ export function useFilteredFees(tabName: TabName = 'sales') {
 export function useFilteredLifecycleEvents(tabName: TabName = 'inbound') {
   const { filters } = useTabFilters(tabName);
 
+  const filterKey = JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    wmDaysOfWeek: filters.wmDaysOfWeek,
+    excludedFileIds: filters.excludedFileIds,
+  });
+
   return useQuery({
-    queryKey: ['filtered-lifecycle-events', tabName, filters],
+    queryKey: ['filtered-lifecycle-events', tabName, filterKey],
+    staleTime: 0,
     queryFn: async () => {
       let query = supabase.from('lifecycle_events').select('*');
       
@@ -375,8 +416,16 @@ export function useFileUploads(tabName: TabName = 'inbound') {
 export function useFilteredWeeklyTrends(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
 
+  const filterKey = JSON.stringify({
+    wmWeeks: filters.wmWeeks,
+    programNames: filters.programNames,
+    facilities: filters.facilities,
+    excludedFileIds: filters.excludedFileIds,
+  });
+
   return useQuery({
-    queryKey: ['filtered-weekly-trends', tabName, filters],
+    queryKey: ['filtered-weekly-trends', tabName, filterKey],
+    staleTime: 0,
     queryFn: async () => {
       // Fetch all records using pagination
       type TrendRow = { wm_week: number | null; gross_sale: number; effective_retail: number | null; file_upload_id: string | null; master_program_name: string | null };
