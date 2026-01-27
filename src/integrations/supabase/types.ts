@@ -410,6 +410,13 @@ export type Database = {
         }[]
       }
       get_wm_day_of_week: { Args: { p_date: string }; Returns: number }
+      get_wm_week_date_range: {
+        Args: { p_wm_week: number; p_year?: number }
+        Returns: {
+          end_date: string
+          start_date: string
+        }[]
+      }
       get_wm_week_number: { Args: { p_date: string }; Returns: number }
     }
     Enums: {
