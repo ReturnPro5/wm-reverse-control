@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface KPICardProps {
   title: string;
@@ -10,6 +11,7 @@ interface KPICardProps {
   icon?: React.ReactNode;
   variant?: 'default' | 'primary' | 'success' | 'warning' | 'info';
   className?: string;
+  isLoading?: boolean;
 }
 
 export function KPICard({
@@ -21,6 +23,7 @@ export function KPICard({
   icon,
   variant = 'default',
   className,
+  isLoading = false,
 }: KPICardProps) {
   const variantStyles = {
     default: 'bg-card border-border',
@@ -52,7 +55,11 @@ export function KPICard({
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
+          {isLoading ? (
+            <Skeleton className="h-8 w-24" />
+          ) : (
+            <p className="text-2xl font-bold tracking-tight">{value}</p>
+          )}
           {subtitle && (
             <p className="text-xs text-muted-foreground">{subtitle}</p>
           )}
@@ -64,7 +71,7 @@ export function KPICard({
         )}
       </div>
       
-      {trend !== undefined && (
+      {trend !== undefined && !isLoading && (
         <div className="mt-3 flex items-center gap-1">
           <TrendIcon className={cn('h-4 w-4', trendColor)} />
           <span className={cn('text-sm font-medium', trendColor)}>
