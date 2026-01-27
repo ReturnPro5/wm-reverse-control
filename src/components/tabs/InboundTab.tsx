@@ -3,7 +3,7 @@ import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { LifecycleFunnel } from '@/components/dashboard/LifecycleFunnel';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
-import { Package, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { Package, CheckCircle, Clock, TrendingUp, DollarSign, ShoppingCart, Tag } from 'lucide-react';
 import {
   BarChart, 
   Bar, 
@@ -67,14 +67,31 @@ export function InboundTab() {
     staleTime: 5 * 60 * 1000, // 5 minutes - prevents constant refetching
     refetchOnWindowFocus: false, // Don't refetch when user clicks back into browser
     queryFn: async () => {
-      if (!inboundFileIds || inboundFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
+      if (!inboundFileIds || inboundFileIds.length === 0) return { 
+        received: 0, 
+        checkedIn: 0, 
+        dailyData: [], 
+        soldSameWeekSales: 0,
+        soldSameWeekRetail: 0,
+        avgSalePrice: 0,
+        checkedInSameWeekRetail: 0,
+        notCheckedInSameWeekRetail: 0,
+      };
       
       // Filter out excluded file IDs
       const activeFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
       if (activeFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
       // Fetch all data in batches to avoid limit issues - add ordering for consistency
-      type UnitRow = { trgid: string; received_on: string | null; checked_in_on: string | null; tag_clientsource: string | null };
+      type UnitRow = { 
+        trgid: string; 
+        received_on: string | null; 
+        checked_in_on: string | null; 
+        tag_clientsource: string | null;
+        effective_retail: number | null;
+        sale_price: number | null;
+        order_closed_date: string | null;
+      };
       const allData: UnitRow[] = [];
       let offset = 0;
       const batchSize = 1000;
@@ -82,7 +99,7 @@ export function InboundTab() {
       while (true) {
         let query = supabase
           .from('units_canonical')
-          .select('trgid, received_on, checked_in_on, tag_clientsource')
+          .select('trgid, received_on, checked_in_on, tag_clientsource, effective_retail, sale_price, order_closed_date')
           .not('received_on', 'is', null)
           .in('file_upload_id', activeFileIds)
           .eq('tag_clientsource', 'WMUS') // WMUS exclusive
@@ -147,6 +164,50 @@ export function InboundTab() {
       const received = filteredUnits.length;
       const checkedIn = filteredUnits.filter(u => u.checked_in_on !== null).length;
       
+      // Calculate sales metrics for items received AND sold in the same filtered week(s)
+      let soldSameWeekSales = 0;
+      let soldSameWeekRetail = 0;
+      let soldCount = 0;
+      let checkedInSameWeekRetail = 0;
+      let notCheckedInSameWeekRetail = 0;
+      
+      filteredUnits.forEach(unit => {
+        const receivedWeek = getWMWeekFromDateString(unit.received_on);
+        const soldWeek = unit.order_closed_date ? getWMWeekFromDateString(unit.order_closed_date) : null;
+        const checkedInWeek = unit.checked_in_on ? getWMWeekFromDateString(unit.checked_in_on) : null;
+        
+        // Check if sold in same week as received (or within filtered weeks)
+        if (soldWeek !== null && unit.sale_price) {
+          const isSoldInFilteredWeek = hasWeekFilter 
+            ? selectedWeeks.includes(soldWeek) && selectedWeeks.includes(receivedWeek!)
+            : soldWeek === receivedWeek;
+          
+          if (isSoldInFilteredWeek) {
+            soldSameWeekSales += Number(unit.sale_price) || 0;
+            soldSameWeekRetail += Number(unit.effective_retail) || 0;
+            soldCount++;
+          }
+        }
+        
+        // Check if checked in same week as received
+        if (checkedInWeek !== null) {
+          const isCheckedInSameWeek = hasWeekFilter
+            ? selectedWeeks.includes(checkedInWeek) && selectedWeeks.includes(receivedWeek!)
+            : checkedInWeek === receivedWeek;
+          
+          if (isCheckedInSameWeek) {
+            checkedInSameWeekRetail += Number(unit.effective_retail) || 0;
+          } else {
+            notCheckedInSameWeekRetail += Number(unit.effective_retail) || 0;
+          }
+        } else {
+          // Not checked in at all - counts as "not checked in same week"
+          notCheckedInSameWeekRetail += Number(unit.effective_retail) || 0;
+        }
+      });
+      
+      const avgSalePrice = soldCount > 0 ? soldSameWeekSales / soldCount : 0;
+      
       // Group by date for chart
       const dailyMap = filteredUnits.reduce((acc, unit) => {
         const date = unit.received_on;
@@ -159,7 +220,16 @@ export function InboundTab() {
       
       const dailyData = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
       
-      return { received, checkedIn, dailyData };
+      return { 
+        received, 
+        checkedIn, 
+        dailyData,
+        soldSameWeekSales,
+        soldSameWeekRetail,
+        avgSalePrice,
+        checkedInSameWeekRetail,
+        notCheckedInSameWeekRetail,
+      };
     },
     enabled: !!inboundFileIds && inboundFileIds.length > 0,
   });
@@ -176,6 +246,11 @@ export function InboundTab() {
   const checkedInCount = inboundMetrics?.checkedIn || 0;
   const checkInRate = receivedCount > 0 ? (checkedInCount / receivedCount) * 100 : 0;
   const pendingCheckIn = receivedCount - checkedInCount;
+  const soldSameWeekSales = inboundMetrics?.soldSameWeekSales || 0;
+  const soldSameWeekRetail = inboundMetrics?.soldSameWeekRetail || 0;
+  const avgSalePrice = inboundMetrics?.avgSalePrice || 0;
+  const checkedInSameWeekRetail = inboundMetrics?.checkedInSameWeekRetail || 0;
+  const notCheckedInSameWeekRetail = inboundMetrics?.notCheckedInSameWeekRetail || 0;
 
   // Chart data from metrics
   const chartData = inboundMetrics?.dailyData || [];
@@ -214,7 +289,7 @@ export function InboundTab() {
         onRefresh={refetch}
       />
 
-      {/* KPI Cards */}
+      {/* KPI Cards - Row 1: Unit Counts */}
       <div className="grid gap-4 md:grid-cols-4">
         <KPICard
           title="Units Received"
@@ -244,6 +319,50 @@ export function InboundTab() {
           title="Pending Check-In"
           value={pendingCheckIn.toLocaleString()}
           subtitle="Awaiting processing"
+          icon={<Clock className="h-5 w-5" />}
+          variant="warning"
+          isLoading={isMetricsLoading}
+        />
+      </div>
+
+      {/* KPI Cards - Row 2: Financial Metrics */}
+      <div className="grid gap-4 md:grid-cols-5">
+        <KPICard
+          title="Same Week Sales $"
+          value={`$${soldSameWeekSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          subtitle="Received & sold same week"
+          icon={<DollarSign className="h-5 w-5" />}
+          variant="success"
+          isLoading={isMetricsLoading}
+        />
+        <KPICard
+          title="Same Week Retail $"
+          value={`$${soldSameWeekRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          subtitle="Retail of same week sales"
+          icon={<Tag className="h-5 w-5" />}
+          variant="primary"
+          isLoading={isMetricsLoading}
+        />
+        <KPICard
+          title="Avg Sale Price"
+          value={`$${avgSalePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          subtitle="Same week avg sale"
+          icon={<ShoppingCart className="h-5 w-5" />}
+          variant="info"
+          isLoading={isMetricsLoading}
+        />
+        <KPICard
+          title="Checked In Retail $"
+          value={`$${checkedInSameWeekRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          subtitle="Checked in same week"
+          icon={<CheckCircle className="h-5 w-5" />}
+          variant="success"
+          isLoading={isMetricsLoading}
+        />
+        <KPICard
+          title="Not Checked In Retail $"
+          value={`$${notCheckedInSameWeekRetail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          subtitle="Not checked in same week"
           icon={<Clock className="h-5 w-5" />}
           variant="warning"
           isLoading={isMetricsLoading}
