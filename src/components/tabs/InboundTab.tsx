@@ -60,7 +60,7 @@ export function InboundTab() {
   });
 
   // Fetch inbound metrics with proper week filtering and deduplication
-  const { data: inboundMetrics, refetch: refetchData } = useQuery({
+  const { data: inboundMetrics, refetch: refetchData, isLoading: isMetricsLoading } = useQuery({
     queryKey: ['inbound-metrics', TAB_NAME, filters, inboundFileIds],
     staleTime: 0, // Prevent stale data issues
     queryFn: async () => {
@@ -219,6 +219,7 @@ export function InboundTab() {
           subtitle="Total received units"
           icon={<Package className="h-5 w-5" />}
           variant="info"
+          isLoading={isMetricsLoading}
         />
         <KPICard
           title="Units Checked In"
@@ -226,6 +227,7 @@ export function InboundTab() {
           subtitle="Processed through check-in"
           icon={<CheckCircle className="h-5 w-5" />}
           variant="success"
+          isLoading={isMetricsLoading}
         />
         <KPICard
           title="Check-In Rate"
@@ -233,6 +235,7 @@ export function InboundTab() {
           subtitle="Checked in / Received"
           icon={<TrendingUp className="h-5 w-5" />}
           variant="primary"
+          isLoading={isMetricsLoading}
         />
         <KPICard
           title="Pending Check-In"
@@ -240,6 +243,7 @@ export function InboundTab() {
           subtitle="Awaiting processing"
           icon={<Clock className="h-5 w-5" />}
           variant="warning"
+          isLoading={isMetricsLoading}
         />
       </div>
 
