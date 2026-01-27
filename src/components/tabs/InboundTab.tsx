@@ -91,6 +91,7 @@ export function InboundTab() {
         effective_retail: number | null;
         sale_price: number | null;
         order_closed_date: string | null;
+        master_program_name: string | null;
       };
       const allData: UnitRow[] = [];
       let offset = 0;
@@ -99,7 +100,7 @@ export function InboundTab() {
       while (true) {
         let query = supabase
           .from('units_canonical')
-          .select('trgid, received_on, checked_in_on, tag_clientsource, effective_retail, sale_price, order_closed_date')
+          .select('trgid, received_on, checked_in_on, tag_clientsource, effective_retail, sale_price, order_closed_date, master_program_name')
           .not('received_on', 'is', null)
           .in('file_upload_id', activeFileIds)
           .eq('tag_clientsource', 'WMUS') // WMUS exclusive
@@ -176,8 +177,12 @@ export function InboundTab() {
         const soldWeek = unit.order_closed_date ? getWMWeekFromDateString(unit.order_closed_date) : null;
         const checkedInWeek = unit.checked_in_on ? getWMWeekFromDateString(unit.checked_in_on) : null;
         
+        // Exclude "owned" programs from sales calculations (consistent with sales logic)
+        const isOwnedProgram = unit.master_program_name?.toLowerCase().includes('owned') ?? false;
+        
         // Check if sold in same week as received (or within filtered weeks)
-        if (soldWeek !== null && unit.sale_price) {
+        // Exclude owned programs from sales metrics
+        if (soldWeek !== null && unit.sale_price && !isOwnedProgram) {
           const isSoldInFilteredWeek = hasWeekFilter 
             ? selectedWeeks.includes(soldWeek) && selectedWeeks.includes(receivedWeek!)
             : soldWeek === receivedWeek;
@@ -189,7 +194,7 @@ export function InboundTab() {
           }
         }
         
-        // Check if checked in same week as received
+        // Check if checked in same week as received (retail calculations include all programs)
         if (checkedInWeek !== null) {
           const isCheckedInSameWeek = hasWeekFilter
             ? selectedWeeks.includes(checkedInWeek) && selectedWeeks.includes(receivedWeek!)
