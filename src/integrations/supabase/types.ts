@@ -381,7 +381,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_inbound_daily_chart: {
+        Args: {
+          p_file_ids: string[]
+          p_wm_days?: number[]
+          p_wm_weeks?: number[]
+        }
+        Returns: {
+          checked_in: number
+          date: string
+          received: number
+        }[]
+      }
+      get_inbound_metrics: {
+        Args: {
+          p_file_ids: string[]
+          p_wm_days?: number[]
+          p_wm_weeks?: number[]
+        }
+        Returns: {
+          checked_in_count: number
+          checked_in_same_week_retail: number
+          not_checked_in_same_week_retail: number
+          received_count: number
+          sold_count: number
+          sold_same_week_retail: number
+          sold_same_week_sales: number
+        }[]
+      }
     }
     Enums: {
       file_type:

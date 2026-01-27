@@ -19,26 +19,7 @@ import { useFilterOptions, useFilteredLifecycle } from '@/hooks/useFilteredData'
 import { useTabFilters } from '@/contexts/FilterContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
-
 const TAB_NAME = 'inbound' as const;
-
-// Calculate WM week from a date string (YYYY-MM-DD)
-function getWMWeekFromDateString(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const date = new Date(year, month - 1, day, 12, 0, 0);
-  return getWMWeekNumber(date);
-}
-
-// Calculate WM day of week from a date string (YYYY-MM-DD)
-// Returns 1-7 (Sat=1, Sun=2, Mon=3, Tue=4, Wed=5, Thu=6, Fri=7)
-function getWMDayOfWeekFromDateString(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const date = new Date(year, month - 1, day, 12, 0, 0);
-  return getWMDayOfWeek(date);
-}
 
 export function InboundTab() {
   const queryClient = useQueryClient();
@@ -61,11 +42,11 @@ export function InboundTab() {
     },
   });
 
-  // Fetch inbound metrics with proper week filtering and deduplication
+  // Fetch inbound metrics using server-side aggregation for speed
   const { data: inboundMetrics, refetch: refetchData, isLoading: isMetricsLoading } = useQuery({
     queryKey: ['inbound-metrics', TAB_NAME, filters, inboundFileIds],
-    staleTime: 5 * 60 * 1000, // 5 minutes - prevents constant refetching
-    refetchOnWindowFocus: false, // Don't refetch when user clicks back into browser
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       if (!inboundFileIds || inboundFileIds.length === 0) return { 
         received: 0, 
@@ -78,162 +59,61 @@ export function InboundTab() {
         notCheckedInSameWeekRetail: 0,
       };
       
-      // Filter out excluded file IDs
       const activeFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
-      if (activeFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
-      
-      // Fetch all data in batches to avoid limit issues - add ordering for consistency
-      type UnitRow = { 
-        trgid: string; 
-        received_on: string | null; 
-        checked_in_on: string | null; 
-        tag_clientsource: string | null;
-        effective_retail: number | null;
-        sale_price: number | null;
-        order_closed_date: string | null;
-        master_program_name: string | null;
+      if (activeFileIds.length === 0) return { 
+        received: 0, checkedIn: 0, dailyData: [],
+        soldSameWeekSales: 0, soldSameWeekRetail: 0, avgSalePrice: 0,
+        checkedInSameWeekRetail: 0, notCheckedInSameWeekRetail: 0,
       };
-      const allData: UnitRow[] = [];
-      let offset = 0;
-      const batchSize = 1000;
       
-      while (true) {
-        let query = supabase
-          .from('units_canonical')
-          .select('trgid, received_on, checked_in_on, tag_clientsource, effective_retail, sale_price, order_closed_date, master_program_name')
-          .not('received_on', 'is', null)
-          .in('file_upload_id', activeFileIds)
-          .eq('tag_clientsource', 'WMUS') // WMUS exclusive
-          .order('trgid', { ascending: true }); // Consistent ordering
-        
-        query = query.range(offset, offset + batchSize - 1);
-        
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        
-        allData.push(...data);
-        if (data.length < batchSize) break;
-        offset += batchSize;
-      }
+      const wmWeeks = filters.wmWeeks.length > 0 ? filters.wmWeeks : null;
+      const wmDays = filters.wmDaysOfWeek.length > 0 ? filters.wmDaysOfWeek : null;
       
-      const selectedWeeks = filters.wmWeeks;
-      const selectedDays = filters.wmDaysOfWeek;
-      const hasWeekFilter = selectedWeeks.length > 0;
-      const hasDayFilter = selectedDays.length > 0;
+      // Use server-side RPC for aggregation - much faster than client-side batching
+      const [metricsResult, chartResult] = await Promise.all([
+        supabase.rpc('get_inbound_metrics', {
+          p_file_ids: activeFileIds,
+          p_wm_weeks: wmWeeks,
+          p_wm_days: wmDays,
+        }),
+        supabase.rpc('get_inbound_daily_chart', {
+          p_file_ids: activeFileIds,
+          p_wm_weeks: wmWeeks,
+          p_wm_days: wmDays,
+        }),
+      ]);
       
-      // Deduplicate by trgid - keep the most recent date record
-      const trgidMap = new Map<string, UnitRow>();
-      allData.forEach(unit => {
-        const existing = trgidMap.get(unit.trgid);
-        if (!existing) {
-          trgidMap.set(unit.trgid, unit);
-        } else {
-          // Keep the one with the most recent received_on date
-          const existingDate = existing.received_on || '';
-          const newDate = unit.received_on || '';
-          if (newDate > existingDate) {
-            trgidMap.set(unit.trgid, unit);
-          }
-        }
-      });
+      if (metricsResult.error) throw metricsResult.error;
+      if (chartResult.error) throw chartResult.error;
       
-      // Start with all deduplicated units
-      let filteredUnits = Array.from(trgidMap.values());
+      const metrics = metricsResult.data?.[0] || {
+        received_count: 0,
+        checked_in_count: 0,
+        sold_same_week_sales: 0,
+        sold_same_week_retail: 0,
+        sold_count: 0,
+        checked_in_same_week_retail: 0,
+        not_checked_in_same_week_retail: 0,
+      };
       
-      // Only apply filters if they are active
-      if (hasWeekFilter || hasDayFilter) {
-        filteredUnits = filteredUnits.filter(unit => {
-          const dateStr = unit.received_on;
-          if (!dateStr) return false;
-          
-          if (hasWeekFilter) {
-            const wmWeek = getWMWeekFromDateString(dateStr);
-            if (wmWeek === null || !selectedWeeks.includes(wmWeek)) return false;
-          }
-          
-          if (hasDayFilter) {
-            const wmDay = getWMDayOfWeekFromDateString(dateStr);
-            if (wmDay === null || !selectedDays.includes(wmDay)) return false;
-          }
-          
-          return true;
-        });
-      }
+      const dailyData = (chartResult.data || []).map((row: { date: string; received: number; checked_in: number }) => ({
+        date: row.date,
+        Received: Number(row.received),
+        CheckedIn: Number(row.checked_in),
+      }));
       
-      // Calculate metrics from deduplicated data
-      const received = filteredUnits.length;
-      const checkedIn = filteredUnits.filter(u => u.checked_in_on !== null).length;
-      
-      // Calculate sales metrics for items received AND sold in the same filtered week(s)
-      let soldSameWeekSales = 0;
-      let soldSameWeekRetail = 0;
-      let soldCount = 0;
-      let checkedInSameWeekRetail = 0;
-      let notCheckedInSameWeekRetail = 0;
-      
-      filteredUnits.forEach(unit => {
-        const receivedWeek = getWMWeekFromDateString(unit.received_on);
-        const soldWeek = unit.order_closed_date ? getWMWeekFromDateString(unit.order_closed_date) : null;
-        const checkedInWeek = unit.checked_in_on ? getWMWeekFromDateString(unit.checked_in_on) : null;
-        
-        // Exclude "owned" programs from sales calculations (consistent with sales logic)
-        const isOwnedProgram = unit.master_program_name?.toLowerCase().includes('owned') ?? false;
-        
-        // Check if sold in same week as received (or within filtered weeks)
-        // Exclude owned programs from sales metrics
-        if (soldWeek !== null && unit.sale_price && !isOwnedProgram) {
-          const isSoldInFilteredWeek = hasWeekFilter 
-            ? selectedWeeks.includes(soldWeek) && selectedWeeks.includes(receivedWeek!)
-            : soldWeek === receivedWeek;
-          
-          if (isSoldInFilteredWeek) {
-            soldSameWeekSales += Number(unit.sale_price) || 0;
-            soldSameWeekRetail += Number(unit.effective_retail) || 0;
-            soldCount++;
-          }
-        }
-        
-        // Check if checked in same week as received (retail calculations include all programs)
-        if (checkedInWeek !== null) {
-          const isCheckedInSameWeek = hasWeekFilter
-            ? selectedWeeks.includes(checkedInWeek) && selectedWeeks.includes(receivedWeek!)
-            : checkedInWeek === receivedWeek;
-          
-          if (isCheckedInSameWeek) {
-            checkedInSameWeekRetail += Number(unit.effective_retail) || 0;
-          } else {
-            notCheckedInSameWeekRetail += Number(unit.effective_retail) || 0;
-          }
-        } else {
-          // Not checked in at all - counts as "not checked in same week"
-          notCheckedInSameWeekRetail += Number(unit.effective_retail) || 0;
-        }
-      });
-      
-      const avgSalePrice = soldCount > 0 ? soldSameWeekSales / soldCount : 0;
-      
-      // Group by date for chart
-      const dailyMap = filteredUnits.reduce((acc, unit) => {
-        const date = unit.received_on;
-        if (!date) return acc;
-        if (!acc[date]) acc[date] = { date, Received: 0, CheckedIn: 0 };
-        acc[date].Received++;
-        if (unit.checked_in_on) acc[date].CheckedIn++;
-        return acc;
-      }, {} as Record<string, { date: string; Received: number; CheckedIn: number }>);
-      
-      const dailyData = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+      const soldCount = Number(metrics.sold_count) || 0;
+      const soldSameWeekSales = Number(metrics.sold_same_week_sales) || 0;
       
       return { 
-        received, 
-        checkedIn, 
+        received: Number(metrics.received_count) || 0, 
+        checkedIn: Number(metrics.checked_in_count) || 0, 
         dailyData,
         soldSameWeekSales,
-        soldSameWeekRetail,
-        avgSalePrice,
-        checkedInSameWeekRetail,
-        notCheckedInSameWeekRetail,
+        soldSameWeekRetail: Number(metrics.sold_same_week_retail) || 0,
+        avgSalePrice: soldCount > 0 ? soldSameWeekSales / soldCount : 0,
+        checkedInSameWeekRetail: Number(metrics.checked_in_same_week_retail) || 0,
+        notCheckedInSameWeekRetail: Number(metrics.not_checked_in_same_week_retail) || 0,
       };
     },
     enabled: !!inboundFileIds && inboundFileIds.length > 0,
