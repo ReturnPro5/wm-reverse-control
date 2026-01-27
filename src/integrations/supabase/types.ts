@@ -409,6 +409,7 @@ export type Database = {
           sold_same_week_sales: number
         }[]
       }
+      get_wm_week_number: { Args: { p_date: string }; Returns: number }
     }
     Enums: {
       file_type:
