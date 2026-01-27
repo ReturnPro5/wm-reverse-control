@@ -401,6 +401,7 @@ export type Database = {
           p_wm_weeks?: number[]
         }
         Returns: {
+          avg_days_to_checkin: number
           checked_in_count: number
           checked_in_same_week_retail: number
           not_checked_in_same_week_retail: number

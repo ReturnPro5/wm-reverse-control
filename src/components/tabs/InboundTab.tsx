@@ -3,7 +3,7 @@ import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { LifecycleFunnel } from '@/components/dashboard/LifecycleFunnel';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
-import { Package, CheckCircle, Clock, TrendingUp, DollarSign, ShoppingCart, Tag } from 'lucide-react';
+import { Package, CheckCircle, Clock, TrendingUp, DollarSign, ShoppingCart, Tag, Timer } from 'lucide-react';
 import {
   BarChart, 
   Bar, 
@@ -57,6 +57,7 @@ export function InboundTab() {
         avgSalePrice: 0,
         checkedInSameWeekRetail: 0,
         notCheckedInSameWeekRetail: 0,
+        avgDaysToCheckin: 0,
       };
       
       const activeFileIds = inboundFileIds.filter(id => !filters.excludedFileIds.includes(id));
@@ -64,6 +65,7 @@ export function InboundTab() {
         received: 0, checkedIn: 0, dailyData: [],
         soldSameWeekSales: 0, soldSameWeekRetail: 0, avgSalePrice: 0,
         checkedInSameWeekRetail: 0, notCheckedInSameWeekRetail: 0,
+        avgDaysToCheckin: 0,
       };
       
       const wmWeeks = filters.wmWeeks.length > 0 ? filters.wmWeeks : null;
@@ -94,6 +96,7 @@ export function InboundTab() {
         sold_count: 0,
         checked_in_same_week_retail: 0,
         not_checked_in_same_week_retail: 0,
+        avg_days_to_checkin: 0,
       };
       
       const dailyData = (chartResult.data || []).map((row: { date: string; received: number; checked_in: number }) => ({
@@ -114,6 +117,7 @@ export function InboundTab() {
         avgSalePrice: soldCount > 0 ? soldSameWeekSales / soldCount : 0,
         checkedInSameWeekRetail: Number(metrics.checked_in_same_week_retail) || 0,
         notCheckedInSameWeekRetail: Number(metrics.not_checked_in_same_week_retail) || 0,
+        avgDaysToCheckin: Number(metrics.avg_days_to_checkin) || 0,
       };
     },
     enabled: !!inboundFileIds && inboundFileIds.length > 0,
@@ -136,6 +140,7 @@ export function InboundTab() {
   const avgSalePrice = inboundMetrics?.avgSalePrice || 0;
   const checkedInSameWeekRetail = inboundMetrics?.checkedInSameWeekRetail || 0;
   const notCheckedInSameWeekRetail = inboundMetrics?.notCheckedInSameWeekRetail || 0;
+  const avgDaysToCheckin = inboundMetrics?.avgDaysToCheckin || 0;
 
   // Chart data from metrics
   const chartData = inboundMetrics?.dailyData || [];
@@ -174,8 +179,8 @@ export function InboundTab() {
         onRefresh={refetch}
       />
 
-      {/* KPI Cards - Row 1: Unit Counts */}
-      <div className="grid gap-4 md:grid-cols-4">
+      {/* KPI Cards - Row 1: Unit Counts + SLA */}
+      <div className="grid gap-4 md:grid-cols-5">
         <KPICard
           title="Units Received"
           value={receivedCount.toLocaleString()}
@@ -206,6 +211,14 @@ export function InboundTab() {
           subtitle="Awaiting processing"
           icon={<Clock className="h-5 w-5" />}
           variant="warning"
+          isLoading={isMetricsLoading}
+        />
+        <KPICard
+          title="Avg Days to Check-In"
+          value={avgDaysToCheckin.toFixed(1)}
+          subtitle="Received → Checked In SLA"
+          icon={<Timer className="h-5 w-5" />}
+          variant="primary"
           isLoading={isMetricsLoading}
         />
       </div>
