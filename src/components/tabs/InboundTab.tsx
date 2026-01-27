@@ -49,6 +49,8 @@ export function InboundTab() {
   // First get inbound file IDs
   const { data: inboundFileIds } = useQuery({
     queryKey: ['inbound-file-ids'],
+    staleTime: 5 * 60 * 1000, // 5 minutes - prevents refetch on window focus
+    refetchOnWindowFocus: false, // Don't refetch when user clicks back into browser
     queryFn: async () => {
       const { data, error } = await supabase
         .from('file_uploads')
@@ -62,7 +64,8 @@ export function InboundTab() {
   // Fetch inbound metrics with proper week filtering and deduplication
   const { data: inboundMetrics, refetch: refetchData, isLoading: isMetricsLoading } = useQuery({
     queryKey: ['inbound-metrics', TAB_NAME, filters, inboundFileIds],
-    staleTime: 0, // Prevent stale data issues
+    staleTime: 5 * 60 * 1000, // 5 minutes - prevents constant refetching
+    refetchOnWindowFocus: false, // Don't refetch when user clicks back into browser
     queryFn: async () => {
       if (!inboundFileIds || inboundFileIds.length === 0) return { received: 0, checkedIn: 0, dailyData: [] };
       
