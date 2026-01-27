@@ -101,23 +101,6 @@ export function InboundTab() {
       const hasWeekFilter = selectedWeeks.length > 0;
       const hasDayFilter = selectedDays.length > 0;
       
-      // Helper: check if a received_on date matches the week and day filters
-      const matchesFilters = (dateStr: string | null): boolean => {
-        if (!dateStr) return false;
-        
-        if (hasWeekFilter) {
-          const wmWeek = getWMWeekFromDateString(dateStr);
-          if (wmWeek === null || !selectedWeeks.includes(wmWeek)) return false;
-        }
-        
-        if (hasDayFilter) {
-          const wmDay = getWMDayOfWeekFromDateString(dateStr);
-          if (wmDay === null || !selectedDays.includes(wmDay)) return false;
-        }
-        
-        return true;
-      };
-      
       // Deduplicate by trgid - keep the most recent date record
       const trgidMap = new Map<string, UnitRow>();
       allData.forEach(unit => {
@@ -134,10 +117,27 @@ export function InboundTab() {
         }
       });
       
-      // Filter by WM week AND day if filters are active - use received_on date for both
+      // Start with all deduplicated units
       let filteredUnits = Array.from(trgidMap.values());
+      
+      // Only apply filters if they are active
       if (hasWeekFilter || hasDayFilter) {
-        filteredUnits = filteredUnits.filter(unit => matchesFilters(unit.received_on));
+        filteredUnits = filteredUnits.filter(unit => {
+          const dateStr = unit.received_on;
+          if (!dateStr) return false;
+          
+          if (hasWeekFilter) {
+            const wmWeek = getWMWeekFromDateString(dateStr);
+            if (wmWeek === null || !selectedWeeks.includes(wmWeek)) return false;
+          }
+          
+          if (hasDayFilter) {
+            const wmDay = getWMDayOfWeekFromDateString(dateStr);
+            if (wmDay === null || !selectedDays.includes(wmDay)) return false;
+          }
+          
+          return true;
+        });
       }
       
       // Calculate metrics from deduplicated data
