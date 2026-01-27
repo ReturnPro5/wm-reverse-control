@@ -381,6 +381,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_filter_options: { Args: never; Returns: Json }
       get_inbound_daily_chart: {
         Args: {
           p_file_ids: string[]
