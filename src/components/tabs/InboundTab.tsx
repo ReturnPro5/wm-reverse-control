@@ -339,7 +339,7 @@ export function InboundTab() {
       <TabFileManager fileType="Inbound" onFilesChanged={refetch} />
 
       {/* Upload Section */}
-      <FileUploadZone onUploadComplete={refetch} />
+      <FileUploadZone onUploadComplete={refetch} defaultFileType="Inbound" title="Upload Inbound File" />
     </div>
   );
 }
