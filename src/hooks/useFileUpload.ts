@@ -340,6 +340,8 @@ export function useFileUpload(fileTypeOverride?: string) {
         });
 
         // Upsert to units_canonical with retry
+        // IMPORTANT: SLA files should NOT overwrite existing units - they only provide SLA metrics
+        // For SLA files, we INSERT with conflict handling to avoid overwriting Inbound data
         const canonicalRecords = batch.map(unit => ({
           trgid: unit.trgid,
           file_upload_id: fileUpload.id,
@@ -367,10 +369,22 @@ export function useFileUpload(fileTypeOverride?: string) {
         }));
 
         await retryWithBackoff(async () => {
-          const { error: canonicalError } = await supabase
-            .from('units_canonical')
-            .upsert(canonicalRecords, { onConflict: 'trgid' });
-          if (canonicalError) throw canonicalError;
+          if (finalFileType === 'SLA') {
+            // For SLA files: Insert only NEW records, skip existing ones (don't overwrite Inbound data)
+            const { error: canonicalError } = await supabase
+              .from('units_canonical')
+              .upsert(canonicalRecords, { 
+                onConflict: 'trgid',
+                ignoreDuplicates: true // This prevents overwriting existing records
+              });
+            if (canonicalError) throw canonicalError;
+          } else {
+            // For other file types: Normal upsert behavior
+            const { error: canonicalError } = await supabase
+              .from('units_canonical')
+              .upsert(canonicalRecords, { onConflict: 'trgid' });
+            if (canonicalError) throw canonicalError;
+          }
         });
 
         // Insert lifecycle events with retry
