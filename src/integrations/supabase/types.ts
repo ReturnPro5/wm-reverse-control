@@ -430,6 +430,7 @@ export type Database = {
         | "Unknown"
         | "Production"
         | "Monthly"
+        | "SLA"
       lifecycle_stage: "Received" | "CheckedIn" | "Tested" | "Listed" | "Sold"
     }
     CompositeTypes: {
@@ -566,6 +567,7 @@ export const Constants = {
         "Unknown",
         "Production",
         "Monthly",
+        "SLA",
       ],
       lifecycle_stage: ["Received", "CheckedIn", "Tested", "Listed", "Sold"],
     },

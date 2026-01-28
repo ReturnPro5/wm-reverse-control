@@ -322,7 +322,20 @@ export function InboundTab() {
         </p>
       </div>
 
-      {/* File Manager */}
+      {/* SLA Section */}
+      <div className="space-y-4">
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
+          <h4 className="font-medium text-primary">SLA Tracking</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            Upload SLA files to calculate the "Avg Days to Check-In" metric. This file should contain items 
+            that have been checked in during the selected week to measure processing efficiency.
+          </p>
+        </div>
+        <TabFileManager fileType="SLA" onFilesChanged={refetch} />
+        <FileUploadZone onUploadComplete={refetch} defaultFileType="SLA" title="Upload SLA File" />
+      </div>
+
+      {/* Inbound File Manager */}
       <TabFileManager fileType="Inbound" onFilesChanged={refetch} />
 
       {/* Upload Section */}

@@ -4,10 +4,15 @@ import { cn } from '@/lib/utils';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { Database } from '@/integrations/supabase/types';
+
+type FileType = Database['public']['Enums']['file_type'];
 
 interface FileUploadZoneProps {
   onUploadComplete?: () => void;
   className?: string;
+  defaultFileType?: FileType;
+  title?: string;
 }
 
 function formatTimeRemaining(seconds: number): string {
@@ -19,9 +24,9 @@ function formatTimeRemaining(seconds: number): string {
   return `${minutes}m ${secs}s remaining`;
 }
 
-export function FileUploadZone({ onUploadComplete, className }: FileUploadZoneProps) {
+export function FileUploadZone({ onUploadComplete, className, defaultFileType, title = "Upload Files" }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const { uploadFile, cancelUpload, isUploading, uploadProgress } = useFileUpload();
+  const { uploadFile, cancelUpload, isUploading, uploadProgress } = useFileUpload(defaultFileType);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -75,7 +80,7 @@ export function FileUploadZone({ onUploadComplete, className }: FileUploadZonePr
 
   return (
     <div className={cn('bg-card rounded-lg border p-6', className)}>
-      <h3 className="text-lg font-semibold mb-4">Upload Files</h3>
+      <h3 className="text-lg font-semibold mb-4">{title}</h3>
       
       <div
         className={cn(
