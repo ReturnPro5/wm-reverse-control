@@ -158,7 +158,7 @@ function formatTimeRemaining(seconds: number): string {
   return `${minutes}m ${secs}s remaining`;
 }
 
-export function useFileUpload() {
+export function useFileUpload(fileTypeOverride?: string) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const { toast } = useToast();
@@ -261,13 +261,16 @@ export function useFileUpload() {
       
       console.log(`Parsed ${units.length} units from file`);
 
-      // Show info toast if file type was auto-detected from smart fallback
+      // Use override if provided, otherwise use detected type
       const detectedType = determineFileType(file.name);
-      const isExplicitType = ['sales', 'inbound', 'outbound', 'inventory', 'production', 'processing'].some(
+      const finalFileType = fileTypeOverride || fileType;
+      
+      // Show info toast if file type was auto-detected from smart fallback
+      const isExplicitType = ['sales', 'inbound', 'outbound', 'inventory', 'production', 'processing', 'sla'].some(
         keyword => file.name.toLowerCase().includes(keyword)
       );
       
-      if (!isExplicitType) {
+      if (!isExplicitType && !fileTypeOverride) {
         toast({
           title: 'File Type Auto-Detected',
           description: `File categorized as "${detectedType}" based on filename. For best results, use naming like: Sales_MM.DD.YY, Inbound_MM.DD.YY, Outbound_MM.DD.YY, Production_MM.DD.YY`,
@@ -281,7 +284,7 @@ export function useFileUpload() {
         .from('file_uploads')
         .insert({
           file_name: file.name,
-          file_type: fileType as any,
+          file_type: finalFileType as any,
           file_business_date: businessDate ? format(businessDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
           row_count: units.length,
           processed: false,
