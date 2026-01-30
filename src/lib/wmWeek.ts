@@ -107,17 +107,21 @@ export function parseFileBusinessDate(fileName: string): Date | null {
   return null;
 }
 
-export function determineFileType(fileName: string): 'Sales' | 'Inbound' | 'Outbound' | 'Inventory' | 'Production' | 'Unknown' {
+export function determineFileType(fileName: string): 'Sales' | 'Inbound' | 'Outbound' | 'Inventory' | 'Production' | 'SLA' | 'Unknown' {
   const lowerName = fileName.toLowerCase();
   
+  // SLA files - "Checked In" pattern
+  if (lowerName.includes('checked in') || lowerName.includes('checked_in') || lowerName.includes('checkedin') || lowerName.includes('sla')) return 'SLA';
+  
+  // Inbound files - "Received" pattern
+  if (lowerName.includes('received') || lowerName.includes('inbound')) return 'Inbound';
+  
   if (lowerName.includes('sales')) return 'Sales';
-  if (lowerName.includes('inbound')) return 'Inbound';
   if (lowerName.includes('outbound')) return 'Outbound';
   if (lowerName.includes('inventory')) return 'Inventory';
   if (lowerName.includes('production') || lowerName.includes('processing')) return 'Production';
   
   // Smart fallback based on common file naming patterns
-  // Files without explicit type keywords default based on content indicators in name
   if (lowerName.includes('recv') || lowerName.includes('receipt')) return 'Inbound';
   if (lowerName.includes('ship') || lowerName.includes('fulfill')) return 'Outbound';
   if (lowerName.includes('order') || lowerName.includes('sold')) return 'Sales';
