@@ -261,9 +261,10 @@ export function useFileUpload(fileTypeOverride?: string) {
       
       console.log(`Parsed ${units.length} units from file`);
 
-      // Use override if provided, otherwise use detected type
+      // Use override if provided, otherwise use detected type from filename
       const detectedType = determineFileType(file.name);
-      const finalFileType = fileTypeOverride || fileType;
+      // IMPORTANT: fileTypeOverride takes priority over parseCSV's fileType
+      const finalFileType = fileTypeOverride || detectedType;
       
       // Show info toast if file type was auto-detected from smart fallback
       const isExplicitType = ['sales', 'inbound', 'outbound', 'inventory', 'production', 'processing', 'sla'].some(
