@@ -8,6 +8,9 @@ import { Database } from '@/integrations/supabase/types';
 
 type FileType = Database['public']['Enums']['file_type'];
 
+// Generate unique ID for each upload zone instance
+let uploadZoneCounter = 0;
+
 interface FileUploadZoneProps {
   onUploadComplete?: () => void;
   className?: string;
@@ -26,6 +29,7 @@ function formatTimeRemaining(seconds: number): string {
 
 export function FileUploadZone({ onUploadComplete, className, defaultFileType, title = "Upload Files" }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [inputId] = useState(() => `file-input-${++uploadZoneCounter}-${defaultFileType || 'default'}`);
   const { uploadFile, cancelUpload, isUploading, uploadProgress } = useFileUpload(defaultFileType);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -91,10 +95,10 @@ export function FileUploadZone({ onUploadComplete, className, defaultFileType, t
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => !isUploading && document.getElementById('file-input')?.click()}
+        onClick={() => !isUploading && document.getElementById(inputId)?.click()}
       >
         <input
-          id="file-input"
+          id={inputId}
           type="file"
           className="hidden"
           accept=".csv,.xlsx,.xls"
