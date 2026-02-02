@@ -186,14 +186,24 @@ export function SalesChannelComparison({
   };
 
   // Get all unique categories across all periods for a channel/marketplace combo
+  // Only include categories that have at least 1 unit in at least one period
   const getCategoriesForMarketplace = (channel: WalmartChannel, marketplace: string): string[] => {
-    const categories = new Set<string>();
+    const categoryUnits = new Map<string, number>();
+    
     [twData, lwData, twlyData].forEach(periodData => {
       const channelData = periodData.channels.find(c => c.channel === channel);
       const mpData = channelData?.marketplaces.find(m => m.marketplace === marketplace);
-      mpData?.categories.forEach(c => categories.add(c.category));
+      mpData?.categories.forEach(c => {
+        categoryUnits.set(c.category, (categoryUnits.get(c.category) || 0) + c.units);
+      });
     });
-    return Array.from(categories).sort((a, b) => {
+    
+    // Filter out categories with 0 total units across all periods
+    const categoriesWithSales = Array.from(categoryUnits.entries())
+      .filter(([_, units]) => units > 0)
+      .map(([category]) => category);
+    
+    return categoriesWithSales.sort((a, b) => {
       const twChannel = twData.channels.find(c => c.channel === channel);
       const twMp = twChannel?.marketplaces.find(m => m.marketplace === marketplace);
       const aSales = twMp?.categories.find(c => c.category === a)?.grossSales || 0;
