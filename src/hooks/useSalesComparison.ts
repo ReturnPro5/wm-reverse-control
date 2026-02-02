@@ -4,6 +4,7 @@ import { useTabFilters, TabName } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
 import { addWalmartChannel } from '@/lib/walmartChannel';
 import { SalesRecordWithChannel } from './useFilteredData';
+import { getWMFiscalYearStart } from '@/lib/wmWeek';
 
 /**
  * Hook to fetch sales data for TW, LW, and TWLY comparison.
@@ -139,10 +140,10 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       const formatDate = (d: Date) => d.toISOString().split('T')[0];
       const today = new Date();
       
-      // TW: Look at current fiscal year data only (~9 months lookback to cover full FY)
-      const twAfterDate = new Date(today);
-      twAfterDate.setMonth(twAfterDate.getMonth() - 9); // ~9 months back for current FY
-      const twAfter = formatDate(twAfterDate);
+      // TW: Use the actual Walmart Fiscal Year start date (Saturday closest to Feb 1)
+      // This ensures we only get current FY data, not stacking prior year sales
+      const fiscalYearStart = getWMFiscalYearStart(today);
+      const twAfter = formatDate(fiscalYearStart);
       
       const twRaw = await fetchPeriod(null, { after: twAfter }); // TW = current FY data only
       
