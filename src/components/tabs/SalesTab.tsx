@@ -302,6 +302,8 @@ export function SalesTab() {
         salesDataTW={comparisonData?.tw || []}
         salesDataLW={comparisonData?.lw || []}
         salesDataTWLY={comparisonData?.twly || []}
+        selectedWeek={comparisonData?.selectedWeek}
+        lastWeek={comparisonData?.lastWeek}
       />
 
       {/* Refund Tracking */}
