@@ -16,14 +16,9 @@ interface SalesChannelComparisonProps {
 
 const formatCurrency = (value: number) => {
   if (value < 0) {
-    const absValue = Math.abs(value);
-    if (absValue >= 1000000) return `($${(absValue / 1000000).toFixed(2)}M)`;
-    if (absValue >= 1000) return `($${(absValue / 1000).toFixed(0)}K)`;
-    return `($${absValue.toFixed(0)})`;
+    return `($${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })})`;
   }
-  if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
-  if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
-  return `$${value.toFixed(0)}`;
+  return `$${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 };
 
 
