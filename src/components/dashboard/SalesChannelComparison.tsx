@@ -174,7 +174,7 @@ export function SalesChannelComparison({
 
 
   // Build column headers with week numbers
-  const twLabel = selectedWeek ? `A) TW (Wk ${selectedWeek})` : 'A) TW';
+  const twLabel = 'A) TW';
   const lwLabel = lastWeek ? `B) LW (Wk ${lastWeek})` : 'B) LW';
   const twlyLabel = selectedWeek ? `C) TWLY (Wk ${selectedWeek} LY)` : 'C) TWLY';
 
