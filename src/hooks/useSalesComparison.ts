@@ -131,17 +131,32 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         return filtered;
       };
 
-      // Calculate date boundary for TWLY (approximately 1 year ago)
+      // Helper to format date as YYYY-MM-DD
+      const formatDate = (d: Date) => d.toISOString().split('T')[0];
       const today = new Date();
-      const twlyBefore = `${today.getFullYear()}-01-01`; // Before this calendar year
-      const twlyAfter = `${today.getFullYear() - 2}-01-01`; // Not more than 2 years ago
+
+      // For LW: Only look at recent data (last 60 days) to get the correct fiscal year's week
+      const lwBeforeDate = new Date(today);
+      const lwAfterDate = new Date(today);
+      lwAfterDate.setDate(lwAfterDate.getDate() - 60);
+      const lwBefore = formatDate(lwBeforeDate);
+      const lwAfter = formatDate(lwAfterDate);
+
+      // For TWLY: Look at data from approximately 1 year ago
+      // Range: 9-15 months ago to capture the same week from last fiscal year
+      const twlyBeforeDate = new Date(today);
+      twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 9);
+      const twlyAfterDate = new Date(today);
+      twlyAfterDate.setMonth(twlyAfterDate.getMonth() - 15);
+      const twlyBefore = formatDate(twlyBeforeDate);
+      const twlyAfter = formatDate(twlyAfterDate);
 
       // TW: Fetch ALL data (no week filter, or filtered by selected weeks if any)
-      // LW/TWLY: Only fetch if a specific week is selected
+      // LW/TWLY: Only fetch if a specific week is selected, with proper date constraints
       const [twRaw, lwRaw, twlyRaw] = await Promise.all([
         fetchPeriod(null), // TW = all data (respects wmWeeks filter if set)
-        selectedWeek !== null ? fetchPeriod(lastWeek) : Promise.resolve([]),
-        selectedWeek !== null ? fetchPeriod(selectedWeek, { before: twlyBefore, after: twlyAfter }) : Promise.resolve([]),
+        selectedWeek !== null ? fetchPeriod(lastWeek, { after: lwAfter, before: lwBefore }) : Promise.resolve([]),
+        selectedWeek !== null ? fetchPeriod(selectedWeek, { after: twlyAfter, before: twlyBefore }) : Promise.resolve([]),
       ]);
 
       // Add walmart channel to each record
