@@ -142,6 +142,7 @@ export function SalesTab() {
         marketplaces={options.marketplaces}
         fileTypes={options.fileTypes}
         orderTypes={options.orderTypes}
+        showWalmartChannel={true}
         onRefresh={refetch}
       />
 
