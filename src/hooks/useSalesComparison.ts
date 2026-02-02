@@ -131,33 +131,39 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         return filtered;
       };
 
-      // Helper to format date as YYYY-MM-DD
-      const formatDate = (d: Date) => d.toISOString().split('T')[0];
-      const today = new Date();
-
-      // For LW: Only look at recent data (last 60 days) to get the correct fiscal year's week
-      const lwBeforeDate = new Date(today);
-      const lwAfterDate = new Date(today);
-      lwAfterDate.setDate(lwAfterDate.getDate() - 60);
-      const lwBefore = formatDate(lwBeforeDate);
-      const lwAfter = formatDate(lwAfterDate);
-
-      // For TWLY: Look at data from approximately 1 year ago
-      // Range: 9-15 months ago to capture the same week from last fiscal year
-      const twlyBeforeDate = new Date(today);
-      twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 9);
-      const twlyAfterDate = new Date(today);
-      twlyAfterDate.setMonth(twlyAfterDate.getMonth() - 15);
-      const twlyBefore = formatDate(twlyBeforeDate);
-      const twlyAfter = formatDate(twlyAfterDate);
-
+      // Get the max date from TW data to determine correct fiscal year context
+      // For TWLY: we need to look at data from ~1 year before the max order_closed_date in the dataset
+      
       // TW: Fetch ALL data (no week filter, or filtered by selected weeks if any)
-      // LW/TWLY: Only fetch if a specific week is selected, with proper date constraints
-      const [twRaw, lwRaw, twlyRaw] = await Promise.all([
+      // LW: Fetch by week number only (no date constraint - uses same fiscal year context as TW)
+      // TWLY: Needs date constraint to look at prior year data
+      const [twRaw, lwRaw] = await Promise.all([
         fetchPeriod(null), // TW = all data (respects wmWeeks filter if set)
-        selectedWeek !== null ? fetchPeriod(lastWeek, { after: lwAfter, before: lwBefore }) : Promise.resolve([]),
-        selectedWeek !== null ? fetchPeriod(selectedWeek, { after: twlyAfter, before: twlyBefore }) : Promise.resolve([]),
+        selectedWeek !== null ? fetchPeriod(lastWeek) : Promise.resolve([]),
       ]);
+
+      // For TWLY, calculate date range based on actual data in TW
+      // Find max date in TW to determine the current fiscal year end
+      let twlyRaw: Tables<'sales_metrics'>[] = [];
+      if (selectedWeek !== null && twRaw.length > 0) {
+        const maxDate = twRaw.reduce((max, r) => {
+          const d = r.order_closed_date;
+          return d > max ? d : max;
+        }, twRaw[0].order_closed_date);
+        
+        // Parse the max date and calculate ~1 year ago range
+        const maxDateObj = new Date(maxDate);
+        const twlyBeforeDate = new Date(maxDateObj);
+        twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 9);
+        const twlyAfterDate = new Date(maxDateObj);
+        twlyAfterDate.setMonth(twlyAfterDate.getMonth() - 15);
+        
+        const formatDate = (d: Date) => d.toISOString().split('T')[0];
+        const twlyBefore = formatDate(twlyBeforeDate);
+        const twlyAfter = formatDate(twlyAfterDate);
+        
+        twlyRaw = await fetchPeriod(selectedWeek, { after: twlyAfter, before: twlyBefore });
+      }
 
       // Add walmart channel to each record
       const tw = addWalmartChannel(twRaw);
