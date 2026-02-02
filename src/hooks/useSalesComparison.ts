@@ -9,24 +9,31 @@ import { SalesRecordWithChannel } from './useFilteredData';
  * Hook to fetch sales data for TW, LW, and TWLY comparison.
  * 
  * - TW (This Week): The currently selected WM Week
- * - LW (Last Week): The week before TW (wmWeek - 1)
- * - TWLY (This Week Last Year): Same week number from prior year (wmWeek from 52 weeks ago)
+ * - LW (Last Week): The week before TW (wmWeek - 1, or 52/53 if crossing year boundary)
+ * - TWLY (This Week Last Year): Same week number but from records dated ~1 year ago
  */
 export function useSalesComparison(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
 
   // Derive comparison weeks from selected wmWeeks
-  // If multiple weeks selected, use the first one as "this week"
+  // If multiple weeks selected, use the highest one as "this week"
   const selectedWeek = filters.wmWeeks.length > 0 ? Math.max(...filters.wmWeeks) : null;
-  const lastWeek = selectedWeek !== null ? selectedWeek - 1 : null;
-  // TWLY: same week number but 52 weeks earlier
-  // In Walmart fiscal calendar, this approximates "this week last year"
-  const thisWeekLastYear = selectedWeek !== null ? selectedWeek - 52 : null;
+  
+  // LW: the week before. Handle wrap-around at year boundary.
+  // Week 1 -> LW is week 52 (or 53) from previous fiscal year
+  const lastWeek = selectedWeek !== null 
+    ? (selectedWeek === 1 ? 52 : selectedWeek - 1) 
+    : null;
+  
+  // TWLY: Same week number, but we need to query by date range for the prior year
+  // Since wm_week resets each fiscal year, week 52 of this year and last year 
+  // both have wm_week = 52. We'll use the order_closed_date to distinguish.
+  const thisWeekLastYearNumber = selectedWeek;
 
   const filterKey = JSON.stringify({
     selectedWeek,
     lastWeek,
-    thisWeekLastYear,
+    thisWeekLastYearNumber,
     programNames: filters.programNames,
     facilities: filters.facilities,
     categoryNames: filters.categoryNames,
@@ -46,15 +53,19 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       lw: SalesRecordWithChannel[];
       twly: SalesRecordWithChannel[];
       selectedWeek: number | null;
+      lastWeek: number | null;
     }> => {
       // If no week selected, return empty data
       if (selectedWeek === null) {
-        return { tw: [], lw: [], twly: [], selectedWeek: null };
+        return { tw: [], lw: [], twly: [], selectedWeek: null, lastWeek: null };
       }
 
-      // Fetch data for all three periods in parallel
-      const fetchPeriod = async (wmWeek: number | null): Promise<Tables<'sales_metrics'>[]> => {
-        if (wmWeek === null) return [];
+      // Helper to fetch data for a specific week with optional year constraint
+      const fetchPeriod = async (
+        wmWeek: number | null, 
+        yearConstraint?: { before?: string; after?: string }
+      ): Promise<Tables<'sales_metrics'>[]> => {
+        if (wmWeek === null || wmWeek <= 0) return [];
         
         const allData: Tables<'sales_metrics'>[] = [];
         let from = 0;
@@ -68,6 +79,14 @@ export function useSalesComparison(tabName: TabName = 'sales') {
             .eq('tag_clientsource', 'WMUS')
             .neq('marketplace_profile_sold_on', 'Transfer')
             .gt('sale_price', 0);
+
+          // Apply year constraints for TWLY
+          if (yearConstraint?.before) {
+            query = query.lt('order_closed_date', yearConstraint.before);
+          }
+          if (yearConstraint?.after) {
+            query = query.gte('order_closed_date', yearConstraint.after);
+          }
 
           // Apply additional filters
           if (filters.programNames.length > 0) {
@@ -110,10 +129,17 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         return filtered;
       };
 
+      // Calculate date boundary for TWLY (approximately 1 year ago)
+      // We'll use a date roughly 11-13 months ago to capture last year's same week
+      const today = new Date();
+      const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+      const twlyBefore = `${today.getFullYear()}-01-01`; // Before this calendar year
+      const twlyAfter = `${today.getFullYear() - 2}-01-01`; // Not more than 2 years ago
+
       const [twRaw, lwRaw, twlyRaw] = await Promise.all([
         fetchPeriod(selectedWeek),
         fetchPeriod(lastWeek),
-        fetchPeriod(thisWeekLastYear),
+        fetchPeriod(thisWeekLastYearNumber, { before: twlyBefore, after: twlyAfter }),
       ]);
 
       // Add walmart channel to each record
@@ -132,6 +158,7 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         lw: applyChannelFilter(lw),
         twly: applyChannelFilter(twly),
         selectedWeek,
+        lastWeek,
       };
     },
   });
