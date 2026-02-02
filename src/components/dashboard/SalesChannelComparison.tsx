@@ -21,35 +21,41 @@ const formatCurrency = (value: number) => {
   return `$${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 };
 
-interface ChannelMetrics {
+interface BaseMetrics {
   units: number;
   grossSales: number;
 }
 
-interface MarketplaceMetrics extends ChannelMetrics {
+interface CategoryMetrics extends BaseMetrics {
+  category: string;
+}
+
+interface MarketplaceData extends BaseMetrics {
   marketplace: string;
+  categories: CategoryMetrics[];
 }
 
 interface ChannelData {
   channel: WalmartChannel;
-  metrics: ChannelMetrics;
-  marketplaces: MarketplaceMetrics[];
+  metrics: BaseMetrics;
+  marketplaces: MarketplaceData[];
 }
 
 interface PeriodData {
   channels: ChannelData[];
-  total: ChannelMetrics;
+  total: BaseMetrics;
 }
 
-function calculateMetrics(records: SalesRecordWithChannel[]): ChannelMetrics {
+function calculateMetrics(records: SalesRecordWithChannel[]): BaseMetrics {
   return records.reduce((acc, r) => ({
     units: acc.units + 1,
     grossSales: acc.grossSales + (Number(r.gross_sale) || 0),
   }), { units: 0, grossSales: 0 });
 }
 
-function groupByChannelAndMarketplace(records: SalesRecordWithChannel[]): PeriodData {
-  const channelMap = new Map<WalmartChannel, Map<string, SalesRecordWithChannel[]>>();
+function groupByChannelMarketplaceCategory(records: SalesRecordWithChannel[]): PeriodData {
+  // Channel → Marketplace → Category → Records
+  const channelMap = new Map<WalmartChannel, Map<string, Map<string, SalesRecordWithChannel[]>>>();
   
   // Initialize all channels
   WALMART_CHANNEL_OPTIONS.forEach(channel => {
@@ -60,25 +66,45 @@ function groupByChannelAndMarketplace(records: SalesRecordWithChannel[]): Period
   records.forEach(record => {
     const channel = record.walmartChannel;
     const marketplace = mapMarketplace(record);
+    const category = record.category_name || 'Unknown';
     
     const marketplaceMap = channelMap.get(channel)!;
     if (!marketplaceMap.has(marketplace)) {
-      marketplaceMap.set(marketplace, []);
+      marketplaceMap.set(marketplace, new Map());
     }
-    marketplaceMap.get(marketplace)!.push(record);
+    const categoryMap = marketplaceMap.get(marketplace)!;
+    if (!categoryMap.has(category)) {
+      categoryMap.set(category, []);
+    }
+    categoryMap.get(category)!.push(record);
   });
 
-  // Calculate metrics for each channel and marketplace
+  // Calculate metrics for each level
   const channels: ChannelData[] = WALMART_CHANNEL_OPTIONS.map(channel => {
     const marketplaceMap = channelMap.get(channel)!;
-    const allRecords: SalesRecordWithChannel[] = [];
-    const marketplaces: MarketplaceMetrics[] = [];
+    const allChannelRecords: SalesRecordWithChannel[] = [];
+    const marketplaces: MarketplaceData[] = [];
 
-    marketplaceMap.forEach((records, marketplace) => {
-      allRecords.push(...records);
+    marketplaceMap.forEach((categoryMap, marketplace) => {
+      const allMarketplaceRecords: SalesRecordWithChannel[] = [];
+      const categories: CategoryMetrics[] = [];
+
+      categoryMap.forEach((records, category) => {
+        allMarketplaceRecords.push(...records);
+        categories.push({
+          category,
+          ...calculateMetrics(records),
+        });
+      });
+
+      // Sort categories by gross sales descending
+      categories.sort((a, b) => b.grossSales - a.grossSales);
+
+      allChannelRecords.push(...allMarketplaceRecords);
       marketplaces.push({
         marketplace,
-        ...calculateMetrics(records),
+        ...calculateMetrics(allMarketplaceRecords),
+        categories,
       });
     });
 
@@ -87,7 +113,7 @@ function groupByChannelAndMarketplace(records: SalesRecordWithChannel[]): Period
 
     return {
       channel,
-      metrics: calculateMetrics(allRecords),
+      metrics: calculateMetrics(allChannelRecords),
       marketplaces,
     };
   });
@@ -98,7 +124,7 @@ function groupByChannelAndMarketplace(records: SalesRecordWithChannel[]): Period
   return { channels, total };
 }
 
-const emptyMetrics: ChannelMetrics = { units: 0, grossSales: 0 };
+const emptyMetrics: BaseMetrics = { units: 0, grossSales: 0 };
 
 export function SalesChannelComparison({ 
   salesDataTW, 
@@ -109,10 +135,11 @@ export function SalesChannelComparison({
   className 
 }: SalesChannelComparisonProps) {
   const [expandedChannels, setExpandedChannels] = useState<Set<WalmartChannel>>(new Set(WALMART_CHANNEL_OPTIONS));
+  const [expandedMarketplaces, setExpandedMarketplaces] = useState<Set<string>>(new Set());
 
-  const twData = useMemo(() => groupByChannelAndMarketplace(salesDataTW), [salesDataTW]);
-  const lwData = useMemo(() => groupByChannelAndMarketplace(salesDataLW), [salesDataLW]);
-  const twlyData = useMemo(() => groupByChannelAndMarketplace(salesDataTWLY), [salesDataTWLY]);
+  const twData = useMemo(() => groupByChannelMarketplaceCategory(salesDataTW), [salesDataTW]);
+  const lwData = useMemo(() => groupByChannelMarketplaceCategory(salesDataLW), [salesDataLW]);
+  const twlyData = useMemo(() => groupByChannelMarketplaceCategory(salesDataTWLY), [salesDataTWLY]);
 
   const toggleChannel = (channel: WalmartChannel) => {
     setExpandedChannels(prev => {
@@ -126,6 +153,23 @@ export function SalesChannelComparison({
     });
   };
 
+  const toggleMarketplace = (channel: WalmartChannel, marketplace: string) => {
+    const key = `${channel}:${marketplace}`;
+    setExpandedMarketplaces(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const isMarketplaceExpanded = (channel: WalmartChannel, marketplace: string) => {
+    return expandedMarketplaces.has(`${channel}:${marketplace}`);
+  };
+
   // Get all unique marketplaces across all periods for each channel
   const getMarketplacesForChannel = (channel: WalmartChannel): string[] => {
     const marketplaces = new Set<string>();
@@ -134,10 +178,26 @@ export function SalesChannelComparison({
       channelData?.marketplaces.forEach(m => marketplaces.add(m.marketplace));
     });
     return Array.from(marketplaces).sort((a, b) => {
-      // Sort by TW gross sales descending
       const twChannel = twData.channels.find(c => c.channel === channel);
       const aSales = twChannel?.marketplaces.find(m => m.marketplace === a)?.grossSales || 0;
       const bSales = twChannel?.marketplaces.find(m => m.marketplace === b)?.grossSales || 0;
+      return bSales - aSales;
+    });
+  };
+
+  // Get all unique categories across all periods for a channel/marketplace combo
+  const getCategoriesForMarketplace = (channel: WalmartChannel, marketplace: string): string[] => {
+    const categories = new Set<string>();
+    [twData, lwData, twlyData].forEach(periodData => {
+      const channelData = periodData.channels.find(c => c.channel === channel);
+      const mpData = channelData?.marketplaces.find(m => m.marketplace === marketplace);
+      mpData?.categories.forEach(c => categories.add(c.category));
+    });
+    return Array.from(categories).sort((a, b) => {
+      const twChannel = twData.channels.find(c => c.channel === channel);
+      const twMp = twChannel?.marketplaces.find(m => m.marketplace === marketplace);
+      const aSales = twMp?.categories.find(c => c.category === a)?.grossSales || 0;
+      const bSales = twMp?.categories.find(c => c.category === b)?.grossSales || 0;
       return bSales - aSales;
     });
   };
@@ -146,9 +206,22 @@ export function SalesChannelComparison({
     periodData: PeriodData, 
     channel: WalmartChannel, 
     marketplace: string
-  ): ChannelMetrics => {
+  ): BaseMetrics => {
     const channelData = periodData.channels.find(c => c.channel === channel);
-    return channelData?.marketplaces.find(m => m.marketplace === marketplace) || emptyMetrics;
+    const mp = channelData?.marketplaces.find(m => m.marketplace === marketplace);
+    return mp || emptyMetrics;
+  };
+
+  const getCategoryMetrics = (
+    periodData: PeriodData, 
+    channel: WalmartChannel, 
+    marketplace: string,
+    category: string
+  ): BaseMetrics => {
+    const channelData = periodData.channels.find(c => c.channel === channel);
+    const mp = channelData?.marketplaces.find(m => m.marketplace === marketplace);
+    const cat = mp?.categories.find(c => c.category === category);
+    return cat || emptyMetrics;
   };
 
   // Build column headers with week numbers
@@ -169,7 +242,7 @@ export function SalesChannelComparison({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
-              <th className="px-3 py-2 text-left font-semibold min-w-[150px]" rowSpan={2}>Walmart Channel</th>
+              <th className="px-3 py-2 text-left font-semibold min-w-[180px]" rowSpan={2}>Walmart Channel</th>
               <th className="px-2 py-2 text-center font-semibold border-l bg-primary/5" colSpan={4}>{twLabel}</th>
               <th className="px-2 py-2 text-center font-semibold border-l" colSpan={4}>{lwLabel}</th>
               <th className="px-2 py-2 text-center font-semibold border-l" colSpan={4}>{twlyLabel}</th>
@@ -198,7 +271,7 @@ export function SalesChannelComparison({
               const lwChannel = lwData.channels.find(c => c.channel === channel);
               const twlyChannel = twlyData.channels.find(c => c.channel === channel);
               const marketplaces = getMarketplacesForChannel(channel);
-              const isExpanded = expandedChannels.has(channel);
+              const isChannelExpanded = expandedChannels.has(channel);
               const hasMarketplaces = marketplaces.length > 0;
 
               const twMetrics = twChannel?.metrics || emptyMetrics;
@@ -216,7 +289,7 @@ export function SalesChannelComparison({
                         disabled={!hasMarketplaces}
                       >
                         {hasMarketplaces ? (
-                          isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
+                          isChannelExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
                         ) : (
                           <span className="w-4" />
                         )}
@@ -239,36 +312,86 @@ export function SalesChannelComparison({
                     <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
                     <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
                   </tr>
+
                   {/* Marketplace Rows */}
-                  {isExpanded && marketplaces.map(marketplace => {
+                  {isChannelExpanded && marketplaces.map(marketplace => {
                     const twMp = getMarketplaceMetrics(twData, channel, marketplace);
                     const lwMp = getMarketplaceMetrics(lwData, channel, marketplace);
                     const twlyMp = getMarketplaceMetrics(twlyData, channel, marketplace);
+                    const categories = getCategoriesForMarketplace(channel, marketplace);
+                    const isMpExpanded = isMarketplaceExpanded(channel, marketplace);
+                    const hasCategories = categories.length > 0;
 
                     return (
-                      <tr key={`${channel}-${marketplace}`} className="hover:bg-muted/20 transition-colors text-muted-foreground">
-                        <td className="px-3 py-1.5 pl-10 text-left text-sm">{marketplace}</td>
-                        {/* TW */}
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">{twMp.units.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">{formatCurrency(twMp.grossSales)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">-</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">-</td>
-                        {/* LW */}
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm border-l">{lwMp.units.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatCurrency(lwMp.grossSales)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
-                        {/* TWLY */}
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm border-l">{twlyMp.units.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatCurrency(twlyMp.grossSales)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
-                      </tr>
+                      <Fragment key={`${channel}-${marketplace}`}>
+                        <tr className="hover:bg-muted/20 transition-colors text-muted-foreground">
+                          <td className="px-3 py-1.5 pl-8 text-left text-sm">
+                            <button 
+                              onClick={() => toggleMarketplace(channel, marketplace)}
+                              className="flex items-center gap-1 text-left w-full"
+                              disabled={!hasCategories}
+                            >
+                              {hasCategories ? (
+                                isMpExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+                              ) : (
+                                <span className="w-3" />
+                              )}
+                              <span>{marketplace}</span>
+                            </button>
+                          </td>
+                          {/* TW */}
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">{twMp.units.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">{formatCurrency(twMp.grossSales)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">-</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">-</td>
+                          {/* LW */}
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm border-l">{lwMp.units.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatCurrency(lwMp.grossSales)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
+                          {/* TWLY */}
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm border-l">{twlyMp.units.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatCurrency(twlyMp.grossSales)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
+                        </tr>
+
+                        {/* Category Rows */}
+                        {isMpExpanded && categories.map(category => {
+                          const twCat = getCategoryMetrics(twData, channel, marketplace, category);
+                          const lwCat = getCategoryMetrics(lwData, channel, marketplace, category);
+                          const twlyCat = getCategoryMetrics(twlyData, channel, marketplace, category);
+
+                          return (
+                            <tr key={`${channel}-${marketplace}-${category}`} className="hover:bg-muted/10 transition-colors text-muted-foreground/70">
+                              <td className="px-3 py-1 pl-14 text-left text-xs truncate max-w-[180px]" title={category}>
+                                {category}
+                              </td>
+                              {/* TW */}
+                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">{twCat.units.toLocaleString()}</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">{formatCurrency(twCat.grossSales)}</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">-</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">-</td>
+                              {/* LW */}
+                              <td className="px-2 py-1 text-right tabular-nums text-xs border-l">{lwCat.units.toLocaleString()}</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs">{formatCurrency(lwCat.grossSales)}</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                              {/* TWLY */}
+                              <td className="px-2 py-1 text-right tabular-nums text-xs border-l">{twlyCat.units.toLocaleString()}</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs">{formatCurrency(twlyCat.grossSales)}</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
                     );
                   })}
                 </Fragment>
               );
             })}
+
             {/* Total Row */}
             <tr className="bg-primary/10 font-bold border-t-2 border-primary/20">
               <td className="px-3 py-2 text-left">Total</td>
