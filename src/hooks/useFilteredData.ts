@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTabFilters, TabFilters, TabName } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
-import { getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
+import { getWMWeekNumber, getWMDayOfWeek, getWMFiscalYearStart } from '@/lib/wmWeek';
 import { filterByWalmartChannel, addWalmartChannel, WalmartChannel } from '@/lib/walmartChannel';
 
 // Calculate WM week from a date string (YYYY-MM-DD)
@@ -291,6 +291,11 @@ export function useFilteredSales(tabName: TabName = 'sales') {
     queryKey: ['filtered-sales', tabName, filterKey],
     staleTime: 0, // Always refetch when filters change
     queryFn: async () => {
+      // Calculate fiscal year start date to prevent stacking TY/LY data
+      const today = new Date();
+      const fiscalYearStart = getWMFiscalYearStart(today);
+      const fiscalYearStartStr = fiscalYearStart.toISOString().split('T')[0];
+      
       // Fetch all records using pagination to bypass 1000 row limit
       const allData: Tables<'sales_metrics'>[] = [];
       let from = 0;
@@ -302,6 +307,8 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         // Exclude transfers and $0 sales for accurate unit counts
         query = query.neq('marketplace_profile_sold_on', 'Transfer');
         query = query.gt('sale_price', 0);
+        // Only fetch current fiscal year data to prevent stacking TY/LY
+        query = query.gte('order_closed_date', fiscalYearStartStr);
         query = query.range(from, from + pageSize - 1);
         
         const { data, error } = await query;
