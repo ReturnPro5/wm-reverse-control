@@ -463,6 +463,7 @@ export function useFileUpload(fileTypeOverride?: string) {
               b2c_auction: unit.b2cAuction || null,
               tag_ebay_auction_sale: unit.tagEbayAuctionSale,
               order_type_sold_on: unit.orderTypeSoldOn || null,
+              title: unit.title || null,
             }));
 
           if (salesRecords.length > 0) {
