@@ -131,13 +131,22 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         return filtered;
       };
 
-      // Get the max date from TW data to determine correct fiscal year context
-      // For TWLY: we need to look at data from ~1 year before the max order_closed_date in the dataset
+      // All periods need date constraints to prevent stacking data across fiscal years
+      // TW: Current fiscal year only (last ~9 months from today to capture most recent data)
+      // LW: Last ~3 months from max TW date
+      // TWLY: 10-14 months ago to capture same week from last fiscal year
       
-      // First fetch TW to get the max date for calculating date ranges
-      const twRaw = await fetchPeriod(null); // TW = all data (respects wmWeeks filter if set)
+      const formatDate = (d: Date) => d.toISOString().split('T')[0];
+      const today = new Date();
       
-      // Calculate date ranges based on actual data
+      // TW: Look at current fiscal year data only (~9 months lookback to cover full FY)
+      const twAfterDate = new Date(today);
+      twAfterDate.setMonth(twAfterDate.getMonth() - 9); // ~9 months back for current FY
+      const twAfter = formatDate(twAfterDate);
+      
+      const twRaw = await fetchPeriod(null, { after: twAfter }); // TW = current FY data only
+      
+      // Calculate date ranges based on actual data for LW and TWLY
       let lwRaw: Tables<'sales_metrics'>[] = [];
       let twlyRaw: Tables<'sales_metrics'>[] = [];
       
@@ -147,7 +156,6 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           return d > max ? d : max;
         }, twRaw[0].order_closed_date);
         
-        const formatDate = (d: Date) => d.toISOString().split('T')[0];
         const maxDateObj = new Date(maxDate);
         
         // LW: Look at data within current fiscal year context (last ~3 months from max date)
@@ -160,7 +168,7 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         const lwAfter = formatDate(lwAfterDate);
         
         // TWLY: Look back ~1 year (10-14 months) to capture same week from last fiscal year
-        // Example: If max date is Jan 2026, TWLY should find Jan 2025 (Week 51/52 of FY14)
+        // Example: If max date is Jan 2026, TWLY should find Jan 2025 (Week 52 of FY24)
         const twlyBeforeDate = new Date(maxDateObj);
         twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 10); // ~10 months ago (upper bound)
         const twlyAfterDate = new Date(maxDateObj);
