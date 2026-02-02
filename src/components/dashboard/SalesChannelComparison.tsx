@@ -21,15 +21,9 @@ const formatCurrency = (value: number) => {
   return `$${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 };
 
-const formatPercent = (value: number | null) => {
-  if (value === null || !isFinite(value)) return '-';
-  return `${value.toFixed(1)}%`;
-};
-
 interface ChannelMetrics {
   units: number;
   grossSales: number;
-  effectiveRetail: number;
 }
 
 interface MarketplaceMetrics extends ChannelMetrics {
@@ -51,14 +45,7 @@ function calculateMetrics(records: SalesRecordWithChannel[]): ChannelMetrics {
   return records.reduce((acc, r) => ({
     units: acc.units + 1,
     grossSales: acc.grossSales + (Number(r.gross_sale) || 0),
-    effectiveRetail: acc.effectiveRetail + (Number(r.effective_retail) || 0),
-  }), { units: 0, grossSales: 0, effectiveRetail: 0 });
-}
-
-// Calculate Net Recovery % = Gross Sales / Effective Retail
-function getNetRecoveryPercent(metrics: ChannelMetrics): number | null {
-  if (metrics.effectiveRetail <= 0) return null;
-  return (metrics.grossSales / metrics.effectiveRetail) * 100;
+  }), { units: 0, grossSales: 0 });
 }
 
 function groupByChannelAndMarketplace(records: SalesRecordWithChannel[]): PeriodData {
@@ -111,7 +98,7 @@ function groupByChannelAndMarketplace(records: SalesRecordWithChannel[]): Period
   return { channels, total };
 }
 
-const emptyMetrics: ChannelMetrics = { units: 0, grossSales: 0, effectiveRetail: 0 };
+const emptyMetrics: ChannelMetrics = { units: 0, grossSales: 0 };
 
 export function SalesChannelComparison({ 
   salesDataTW, 
@@ -164,7 +151,6 @@ export function SalesChannelComparison({
     return channelData?.marketplaces.find(m => m.marketplace === marketplace) || emptyMetrics;
   };
 
-
   // Build column headers with week numbers
   const twLabel = 'A) TW';
   const lwLabel = lastWeek ? `B) LW (Wk ${lastWeek})` : 'B) LW';
@@ -184,22 +170,25 @@ export function SalesChannelComparison({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="px-3 py-2 text-left font-semibold min-w-[150px]" rowSpan={2}>Walmart Channel</th>
-              <th className="px-2 py-2 text-center font-semibold border-l bg-primary/5" colSpan={3}>{twLabel}</th>
-              <th className="px-2 py-2 text-center font-semibold border-l" colSpan={3}>{lwLabel}</th>
-              <th className="px-2 py-2 text-center font-semibold border-l" colSpan={3}>{twlyLabel}</th>
+              <th className="px-2 py-2 text-center font-semibold border-l bg-primary/5" colSpan={4}>{twLabel}</th>
+              <th className="px-2 py-2 text-center font-semibold border-l" colSpan={4}>{lwLabel}</th>
+              <th className="px-2 py-2 text-center font-semibold border-l" colSpan={4}>{twlyLabel}</th>
             </tr>
             <tr className="border-b bg-muted/30 text-xs">
               {/* TW */}
               <th className="px-2 py-1.5 text-right font-medium border-l bg-primary/5">Units</th>
               <th className="px-2 py-1.5 text-right font-medium bg-primary/5">Gross Sales</th>
+              <th className="px-2 py-1.5 text-right font-medium bg-primary/5">Net Dollars</th>
               <th className="px-2 py-1.5 text-right font-medium bg-primary/5">Net Recovery %</th>
               {/* LW */}
               <th className="px-2 py-1.5 text-right font-medium border-l">Units</th>
               <th className="px-2 py-1.5 text-right font-medium">Gross Sales</th>
+              <th className="px-2 py-1.5 text-right font-medium">Net Dollars</th>
               <th className="px-2 py-1.5 text-right font-medium">Net Recovery %</th>
               {/* TWLY */}
               <th className="px-2 py-1.5 text-right font-medium border-l">Units</th>
               <th className="px-2 py-1.5 text-right font-medium">Gross Sales</th>
+              <th className="px-2 py-1.5 text-right font-medium">Net Dollars</th>
               <th className="px-2 py-1.5 text-right font-medium">Net Recovery %</th>
             </tr>
           </thead>
@@ -237,15 +226,18 @@ export function SalesChannelComparison({
                     {/* TW */}
                     <td className="px-2 py-2 text-right tabular-nums bg-primary/5">{twMetrics.units.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right tabular-nums bg-primary/5">{formatCurrency(twMetrics.grossSales)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums bg-primary/5">{formatPercent(getNetRecoveryPercent(twMetrics))}</td>
+                    <td className="px-2 py-2 text-right tabular-nums bg-primary/5 text-muted-foreground">-</td>
+                    <td className="px-2 py-2 text-right tabular-nums bg-primary/5 text-muted-foreground">-</td>
                     {/* LW */}
                     <td className="px-2 py-2 text-right tabular-nums border-l">{lwMetrics.units.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{formatCurrency(lwMetrics.grossSales)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{formatPercent(getNetRecoveryPercent(lwMetrics))}</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
                     {/* TWLY */}
                     <td className="px-2 py-2 text-right tabular-nums border-l">{twlyMetrics.units.toLocaleString()}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{formatCurrency(twlyMetrics.grossSales)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{formatPercent(getNetRecoveryPercent(twlyMetrics))}</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
                   </tr>
                   {/* Marketplace Rows */}
                   {isExpanded && marketplaces.map(marketplace => {
@@ -259,15 +251,18 @@ export function SalesChannelComparison({
                         {/* TW */}
                         <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">{twMp.units.toLocaleString()}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">{formatCurrency(twMp.grossSales)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">{formatPercent(getNetRecoveryPercent(twMp))}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">-</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-sm bg-primary/5">-</td>
                         {/* LW */}
                         <td className="px-2 py-1.5 text-right tabular-nums text-sm border-l">{lwMp.units.toLocaleString()}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatCurrency(lwMp.grossSales)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatPercent(getNetRecoveryPercent(lwMp))}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
                         {/* TWLY */}
                         <td className="px-2 py-1.5 text-right tabular-nums text-sm border-l">{twlyMp.units.toLocaleString()}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatCurrency(twlyMp.grossSales)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">{formatPercent(getNetRecoveryPercent(twlyMp))}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-sm">-</td>
                       </tr>
                     );
                   })}
@@ -280,15 +275,18 @@ export function SalesChannelComparison({
               {/* TW */}
               <td className="px-2 py-2 text-right tabular-nums bg-primary/10">{twData.total.units.toLocaleString()}</td>
               <td className="px-2 py-2 text-right tabular-nums bg-primary/10">{formatCurrency(twData.total.grossSales)}</td>
-              <td className="px-2 py-2 text-right tabular-nums bg-primary/10">{formatPercent(getNetRecoveryPercent(twData.total))}</td>
+              <td className="px-2 py-2 text-right tabular-nums bg-primary/10 text-muted-foreground">-</td>
+              <td className="px-2 py-2 text-right tabular-nums bg-primary/10 text-muted-foreground">-</td>
               {/* LW */}
               <td className="px-2 py-2 text-right tabular-nums border-l">{lwData.total.units.toLocaleString()}</td>
               <td className="px-2 py-2 text-right tabular-nums">{formatCurrency(lwData.total.grossSales)}</td>
-              <td className="px-2 py-2 text-right tabular-nums">{formatPercent(getNetRecoveryPercent(lwData.total))}</td>
+              <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
+              <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
               {/* TWLY */}
               <td className="px-2 py-2 text-right tabular-nums border-l">{twlyData.total.units.toLocaleString()}</td>
               <td className="px-2 py-2 text-right tabular-nums">{formatCurrency(twlyData.total.grossSales)}</td>
-              <td className="px-2 py-2 text-right tabular-nums">{formatPercent(getNetRecoveryPercent(twlyData.total))}</td>
+              <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
+              <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">-</td>
             </tr>
           </tbody>
         </table>
