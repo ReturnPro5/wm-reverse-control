@@ -30,8 +30,6 @@ const B2C_RESTOCK_MARKETPLACES = [
   'walmart dsv',
 ];
 
-const FINISHED_GOODS_CONDITIONS = ['new', 'used', 'refurbished'];
-
 /**
  * Derive the Walmart Channel for a single sales record
  */
@@ -39,7 +37,6 @@ export function deriveWalmartChannel(record: SalesRecord): WalmartChannel {
   const marketplace = record.marketplace_profile_sold_on?.toLowerCase() || '';
   const orderType = record.order_type_sold_on || '';
   const sortingIndex = record.sorting_index?.trim() || '';
-  const pricingCondition = record.tag_pricing_condition?.toLowerCase() || '';
 
   // Rule 1: B2C Restock - Marketplace contains specific Walmart channels
   if (B2C_RESTOCK_MARKETPLACES.some(m => marketplace.includes(m))) {
@@ -51,12 +48,12 @@ export function deriveWalmartChannel(record: SalesRecord): WalmartChannel {
     return 'B2C Resale';
   }
 
-  // Rule 3: B2B Finished Goods - SortingIndex is null/blank AND condition is New/Used/Refurbished
-  if (!sortingIndex && FINISHED_GOODS_CONDITIONS.includes(pricingCondition)) {
+  // Rule 3: B2B Finished Goods - SortingIndex is null/blank (non-pallet B2B)
+  if (!sortingIndex) {
     return 'B2B Finished Goods';
   }
 
-  // Rule 4: Default to B2B Pallet
+  // Rule 4: B2B Pallet - Has a sorting index (pallet sales)
   return 'B2B Pallet';
 }
 
