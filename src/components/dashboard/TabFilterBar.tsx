@@ -3,6 +3,7 @@ import { RefreshCw, RotateCcw, Filter, ChevronDown, ChevronUp } from 'lucide-rea
 import { cn } from '@/lib/utils';
 import { useTabFilters, TabName, TabFilters } from '@/contexts/FilterContext';
 import { getWMWeekNumber, WM_DAY_NAMES } from '@/lib/wmWeek';
+import { WALMART_CHANNEL_OPTIONS } from '@/lib/walmartChannel';
 import { useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -19,6 +20,7 @@ interface TabFilterBarProps {
   marketplaces: string[];
   fileTypes: string[];
   orderTypes?: string[];
+  showWalmartChannel?: boolean;
   onRefresh: () => void;
   className?: string;
 }
@@ -35,6 +37,7 @@ export function TabFilterBar({
   marketplaces,
   fileTypes,
   orderTypes = [],
+  showWalmartChannel = false,
   onRefresh,
   className,
 }: TabFilterBarProps) {
@@ -104,7 +107,16 @@ export function TabFilterBar({
           className="w-[140px]"
         />
 
-        {/* Client Source filter removed - WMUS exclusive report */}
+        {/* Walmart Channel - Sales tabs only */}
+        {showWalmartChannel && (
+          <MultiSelect
+            options={WALMART_CHANNEL_OPTIONS.map(c => ({ value: c, label: c }))}
+            selected={filters.walmartChannels}
+            onChange={(values) => setFilter('walmartChannels', values as typeof filters.walmartChannels)}
+            placeholder="Walmart Channel"
+            className="w-[160px]"
+          />
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>

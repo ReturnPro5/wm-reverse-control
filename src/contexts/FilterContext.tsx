@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { WalmartChannel } from '@/lib/walmartChannel';
 
 export interface TabFilters {
   // File-level filters
@@ -22,6 +23,9 @@ export interface TabFilters {
   tagClientSources: string[];
   marketplacesSoldOn: string[];
   orderTypesSoldOn: string[];
+  
+  // Sales tab only: Walmart Channel derived dimension
+  walmartChannels: WalmartChannel[];
 }
 
 export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv' | 'quarterly-review';
@@ -57,6 +61,7 @@ const defaultTabFilters: TabFilters = {
   tagClientSources: [],
   marketplacesSoldOn: [],
   orderTypesSoldOn: [],
+  walmartChannels: [],
 };
 
 const FilterContext = createContext<FilterContextType | undefined>(undefined);

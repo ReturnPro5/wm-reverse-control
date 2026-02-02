@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useTabFilters, TabFilters, TabName } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
 import { getWMWeekNumber, getWMDayOfWeek } from '@/lib/wmWeek';
+import { filterByWalmartChannel, addWalmartChannel, WalmartChannel } from '@/lib/walmartChannel';
 
 // Calculate WM week from a date string (YYYY-MM-DD)
 function getWMWeekFromDateString(dateStr: string | null): number | null {
@@ -266,6 +267,8 @@ export function useFilteredLifecycle(tabName: TabName = 'inbound') {
   });
 }
 
+export type SalesRecordWithChannel = Tables<'sales_metrics'> & { walmartChannel: WalmartChannel };
+
 export function useFilteredSales(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
 
@@ -281,6 +284,7 @@ export function useFilteredSales(tabName: TabName = 'sales') {
     orderTypesSoldOn: filters.orderTypesSoldOn,
     locationIds: filters.locationIds,
     excludedFileIds: filters.excludedFileIds,
+    walmartChannels: filters.walmartChannels,
   });
 
   return useQuery({
@@ -312,7 +316,13 @@ export function useFilteredSales(tabName: TabName = 'sales') {
       
       // Filter out excluded files and "owned" programs
       const filteredByFiles = filterExcludedFiles(allData, filters.excludedFileIds);
-      return filterOwnedPrograms(filteredByFiles);
+      const filteredNoOwned = filterOwnedPrograms(filteredByFiles);
+      
+      // Apply Walmart Channel filter (Sales tabs only)
+      const filteredByChannel = filterByWalmartChannel(filteredNoOwned, filters.walmartChannels);
+      
+      // Add derived walmartChannel to each record for use in visualizations
+      return addWalmartChannel(filteredByChannel);
     },
   });
 }
