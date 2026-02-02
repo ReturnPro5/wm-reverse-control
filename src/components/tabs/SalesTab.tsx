@@ -2,6 +2,7 @@ import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
+import { SalesChannelComparison } from '@/components/dashboard/SalesChannelComparison';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, Receipt } from 'lucide-react';
 import { 
   XAxis, 
@@ -17,6 +18,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useFilterOptions, useFilteredSales, useFilteredFees } from '@/hooks/useFilteredData';
+import { useSalesComparison } from '@/hooks/useSalesComparison';
 import { mapMarketplace, marketplaceColors, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 const TAB_NAME = 'sales' as const;
@@ -31,11 +33,13 @@ export function SalesTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { data: salesData, refetch: refetchData } = useFilteredSales(TAB_NAME);
   const { data: feeData, refetch: refetchFees } = useFilteredFees(TAB_NAME);
+  const { data: comparisonData, refetch: refetchComparison } = useSalesComparison(TAB_NAME);
 
   const refetch = () => {
     refetchOptions();
     refetchData();
     refetchFees();
+    refetchComparison();
   };
 
   // Calculate metrics
@@ -292,6 +296,13 @@ export function SalesTab() {
           </div>
         )}
       </div>
+
+      {/* Sales by Walmart Channel Comparison Table */}
+      <SalesChannelComparison
+        salesDataTW={comparisonData?.tw || []}
+        salesDataLW={comparisonData?.lw || []}
+        salesDataTWLY={comparisonData?.twly || []}
+      />
 
       {/* Refund Tracking */}
       {refundTotal > 0 && (
