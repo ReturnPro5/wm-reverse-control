@@ -134,37 +134,45 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       // Get the max date from TW data to determine correct fiscal year context
       // For TWLY: we need to look at data from ~1 year before the max order_closed_date in the dataset
       
-      // TW: Fetch ALL data (no week filter, or filtered by selected weeks if any)
-      // LW: Fetch by week number only (no date constraint - uses same fiscal year context as TW)
-      // TWLY: Needs date constraint to look at prior year data
-      const [twRaw, lwRaw] = await Promise.all([
-        fetchPeriod(null), // TW = all data (respects wmWeeks filter if set)
-        selectedWeek !== null ? fetchPeriod(lastWeek) : Promise.resolve([]),
-      ]);
-
-      // For TWLY, calculate date range based on actual data in TW
-      // Find max date in TW to determine the current fiscal year end
+      // First fetch TW to get the max date for calculating date ranges
+      const twRaw = await fetchPeriod(null); // TW = all data (respects wmWeeks filter if set)
+      
+      // Calculate date ranges based on actual data
+      let lwRaw: Tables<'sales_metrics'>[] = [];
       let twlyRaw: Tables<'sales_metrics'>[] = [];
+      
       if (selectedWeek !== null && twRaw.length > 0) {
         const maxDate = twRaw.reduce((max, r) => {
           const d = r.order_closed_date;
           return d > max ? d : max;
         }, twRaw[0].order_closed_date);
         
-        // Parse the max date and calculate ~1 year ago range
-        // Walmart fiscal year is ~52-53 weeks, so look back 11-13 months to capture same week last year
-        // Example: If max date is Jan 2026, TWLY should find Jan 2025 (Week 52 of FY14)
+        const formatDate = (d: Date) => d.toISOString().split('T')[0];
         const maxDateObj = new Date(maxDate);
+        
+        // LW: Look at data within current fiscal year context (last ~3 months from max date)
+        // This prevents pulling in last year's same week number
+        const lwBeforeDate = new Date(maxDateObj);
+        lwBeforeDate.setDate(lwBeforeDate.getDate() + 7); // Include up to a week after max
+        const lwAfterDate = new Date(maxDateObj);
+        lwAfterDate.setMonth(lwAfterDate.getMonth() - 3); // ~3 months back
+        const lwBefore = formatDate(lwBeforeDate);
+        const lwAfter = formatDate(lwAfterDate);
+        
+        // TWLY: Look back ~1 year (10-14 months) to capture same week from last fiscal year
+        // Example: If max date is Jan 2026, TWLY should find Jan 2025 (Week 51/52 of FY14)
         const twlyBeforeDate = new Date(maxDateObj);
         twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 10); // ~10 months ago (upper bound)
         const twlyAfterDate = new Date(maxDateObj);
         twlyAfterDate.setMonth(twlyAfterDate.getMonth() - 14); // ~14 months ago (lower bound)
-        
-        const formatDate = (d: Date) => d.toISOString().split('T')[0];
         const twlyBefore = formatDate(twlyBeforeDate);
         const twlyAfter = formatDate(twlyAfterDate);
         
-        twlyRaw = await fetchPeriod(selectedWeek, { after: twlyAfter, before: twlyBefore });
+        // Fetch LW and TWLY in parallel with proper date constraints
+        [lwRaw, twlyRaw] = await Promise.all([
+          fetchPeriod(lastWeek, { after: lwAfter, before: lwBefore }),
+          fetchPeriod(selectedWeek, { after: twlyAfter, before: twlyBefore }),
+        ]);
       }
 
       // Add walmart channel to each record
