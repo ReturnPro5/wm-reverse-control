@@ -1,9 +1,10 @@
 import { useMemo, useState, Fragment } from 'react';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Filter } from 'lucide-react';
 import { WalmartChannel, WALMART_CHANNEL_OPTIONS } from '@/lib/walmartChannel';
 import { mapMarketplace } from '@/lib/marketplaceMapping';
 import { SalesRecordWithChannel } from '@/hooks/useFilteredData';
+import { MultiSelect } from '@/components/ui/multi-select';
 
 interface SalesChannelComparisonProps {
   salesDataTW: SalesRecordWithChannel[];
@@ -26,8 +27,13 @@ interface BaseMetrics {
   grossSales: number;
 }
 
+interface TitleMetrics extends BaseMetrics {
+  title: string;
+}
+
 interface CategoryMetrics extends BaseMetrics {
   category: string;
+  titles: TitleMetrics[];
 }
 
 interface MarketplaceData extends BaseMetrics {
@@ -46,6 +52,13 @@ interface PeriodData {
   total: BaseMetrics;
 }
 
+interface LocalFilters {
+  masterPrograms: string[];
+  walmartChannels: WalmartChannel[];
+  programNames: string[];
+  categoryNames: string[];
+}
+
 function calculateMetrics(records: SalesRecordWithChannel[]): BaseMetrics {
   return records.reduce((acc, r) => ({
     units: acc.units + 1,
@@ -53,9 +66,9 @@ function calculateMetrics(records: SalesRecordWithChannel[]): BaseMetrics {
   }), { units: 0, grossSales: 0 });
 }
 
-function groupByChannelMarketplaceCategory(records: SalesRecordWithChannel[]): PeriodData {
-  // Channel → Marketplace → Category → Records
-  const channelMap = new Map<WalmartChannel, Map<string, Map<string, SalesRecordWithChannel[]>>>();
+function groupByChannelMarketplaceCategoryTitle(records: SalesRecordWithChannel[]): PeriodData {
+  // Channel → Marketplace → Category → Title → Records
+  const channelMap = new Map<WalmartChannel, Map<string, Map<string, Map<string, SalesRecordWithChannel[]>>>>();
   
   // Initialize all channels
   WALMART_CHANNEL_OPTIONS.forEach(channel => {
@@ -67,6 +80,7 @@ function groupByChannelMarketplaceCategory(records: SalesRecordWithChannel[]): P
     const channel = record.walmartChannel;
     const marketplace = mapMarketplace(record);
     const category = record.category_name || 'Unknown';
+    const title = (record as any).title || 'Unknown';
     
     const marketplaceMap = channelMap.get(channel)!;
     if (!marketplaceMap.has(marketplace)) {
@@ -74,9 +88,13 @@ function groupByChannelMarketplaceCategory(records: SalesRecordWithChannel[]): P
     }
     const categoryMap = marketplaceMap.get(marketplace)!;
     if (!categoryMap.has(category)) {
-      categoryMap.set(category, []);
+      categoryMap.set(category, new Map());
     }
-    categoryMap.get(category)!.push(record);
+    const titleMap = categoryMap.get(category)!;
+    if (!titleMap.has(title)) {
+      titleMap.set(title, []);
+    }
+    titleMap.get(title)!.push(record);
   });
 
   // Calculate metrics for each level
@@ -89,11 +107,26 @@ function groupByChannelMarketplaceCategory(records: SalesRecordWithChannel[]): P
       const allMarketplaceRecords: SalesRecordWithChannel[] = [];
       const categories: CategoryMetrics[] = [];
 
-      categoryMap.forEach((records, category) => {
-        allMarketplaceRecords.push(...records);
+      categoryMap.forEach((titleMap, category) => {
+        const allCategoryRecords: SalesRecordWithChannel[] = [];
+        const titles: TitleMetrics[] = [];
+
+        titleMap.forEach((records, title) => {
+          allCategoryRecords.push(...records);
+          titles.push({
+            title,
+            ...calculateMetrics(records),
+          });
+        });
+
+        // Sort titles by gross sales descending
+        titles.sort((a, b) => b.grossSales - a.grossSales);
+
+        allMarketplaceRecords.push(...allCategoryRecords);
         categories.push({
           category,
-          ...calculateMetrics(records),
+          ...calculateMetrics(allCategoryRecords),
+          titles,
         });
       });
 
@@ -136,10 +169,62 @@ export function SalesChannelComparison({
 }: SalesChannelComparisonProps) {
   const [expandedChannels, setExpandedChannels] = useState<Set<WalmartChannel>>(new Set(WALMART_CHANNEL_OPTIONS));
   const [expandedMarketplaces, setExpandedMarketplaces] = useState<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  
+  // Local filters state
+  const [localFilters, setLocalFilters] = useState<LocalFilters>({
+    masterPrograms: [],
+    walmartChannels: [],
+    programNames: [],
+    categoryNames: [],
+  });
 
-  const twData = useMemo(() => groupByChannelMarketplaceCategory(salesDataTW), [salesDataTW]);
-  const lwData = useMemo(() => groupByChannelMarketplaceCategory(salesDataLW), [salesDataLW]);
-  const twlyData = useMemo(() => groupByChannelMarketplaceCategory(salesDataTWLY), [salesDataTWLY]);
+  // Extract unique filter options from the data
+  const filterOptions = useMemo(() => {
+    const allData = [...salesDataTW, ...salesDataLW, ...salesDataTWLY];
+    const masterPrograms = new Set<string>();
+    const programNames = new Set<string>();
+    const categoryNames = new Set<string>();
+
+    allData.forEach(record => {
+      if (record.master_program_name) masterPrograms.add(record.master_program_name);
+      if (record.program_name) programNames.add(record.program_name);
+      if (record.category_name) categoryNames.add(record.category_name);
+    });
+
+    return {
+      masterPrograms: Array.from(masterPrograms).sort(),
+      programNames: Array.from(programNames).sort(),
+      categoryNames: Array.from(categoryNames).sort(),
+    };
+  }, [salesDataTW, salesDataLW, salesDataTWLY]);
+
+  // Apply local filters to data
+  const applyLocalFilters = (data: SalesRecordWithChannel[]): SalesRecordWithChannel[] => {
+    return data.filter(record => {
+      if (localFilters.masterPrograms.length > 0 && !localFilters.masterPrograms.includes(record.master_program_name || '')) {
+        return false;
+      }
+      if (localFilters.walmartChannels.length > 0 && !localFilters.walmartChannels.includes(record.walmartChannel)) {
+        return false;
+      }
+      if (localFilters.programNames.length > 0 && !localFilters.programNames.includes(record.program_name || '')) {
+        return false;
+      }
+      if (localFilters.categoryNames.length > 0 && !localFilters.categoryNames.includes(record.category_name || '')) {
+        return false;
+      }
+      return true;
+    });
+  };
+
+  const filteredTW = useMemo(() => applyLocalFilters(salesDataTW), [salesDataTW, localFilters]);
+  const filteredLW = useMemo(() => applyLocalFilters(salesDataLW), [salesDataLW, localFilters]);
+  const filteredTWLY = useMemo(() => applyLocalFilters(salesDataTWLY), [salesDataTWLY, localFilters]);
+
+  const twData = useMemo(() => groupByChannelMarketplaceCategoryTitle(filteredTW), [filteredTW]);
+  const lwData = useMemo(() => groupByChannelMarketplaceCategoryTitle(filteredLW), [filteredLW]);
+  const twlyData = useMemo(() => groupByChannelMarketplaceCategoryTitle(filteredTWLY), [filteredTWLY]);
 
   const toggleChannel = (channel: WalmartChannel) => {
     setExpandedChannels(prev => {
@@ -166,8 +251,25 @@ export function SalesChannelComparison({
     });
   };
 
+  const toggleCategory = (channel: WalmartChannel, marketplace: string, category: string) => {
+    const key = `${channel}:${marketplace}:${category}`;
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
   const isMarketplaceExpanded = (channel: WalmartChannel, marketplace: string) => {
     return expandedMarketplaces.has(`${channel}:${marketplace}`);
+  };
+
+  const isCategoryExpanded = (channel: WalmartChannel, marketplace: string, category: string) => {
+    return expandedCategories.has(`${channel}:${marketplace}:${category}`);
   };
 
   // Get all unique marketplaces across all periods for each channel
@@ -212,6 +314,35 @@ export function SalesChannelComparison({
     });
   };
 
+  // Get all unique titles across all periods for a channel/marketplace/category combo
+  // Only include titles that have at least 1 unit in at least one period
+  const getTitlesForCategory = (channel: WalmartChannel, marketplace: string, category: string): string[] => {
+    const titleUnits = new Map<string, number>();
+    
+    [twData, lwData, twlyData].forEach(periodData => {
+      const channelData = periodData.channels.find(c => c.channel === channel);
+      const mpData = channelData?.marketplaces.find(m => m.marketplace === marketplace);
+      const catData = mpData?.categories.find(c => c.category === category);
+      catData?.titles.forEach(t => {
+        titleUnits.set(t.title, (titleUnits.get(t.title) || 0) + t.units);
+      });
+    });
+    
+    // Filter out titles with 0 total units across all periods
+    const titlesWithSales = Array.from(titleUnits.entries())
+      .filter(([_, units]) => units > 0)
+      .map(([title]) => title);
+    
+    return titlesWithSales.sort((a, b) => {
+      const twChannel = twData.channels.find(c => c.channel === channel);
+      const twMp = twChannel?.marketplaces.find(m => m.marketplace === marketplace);
+      const twCat = twMp?.categories.find(c => c.category === category);
+      const aSales = twCat?.titles.find(t => t.title === a)?.grossSales || 0;
+      const bSales = twCat?.titles.find(t => t.title === b)?.grossSales || 0;
+      return bSales - aSales;
+    });
+  };
+
   const getMarketplaceMetrics = (
     periodData: PeriodData, 
     channel: WalmartChannel, 
@@ -234,18 +365,89 @@ export function SalesChannelComparison({
     return cat || emptyMetrics;
   };
 
+  const getTitleMetrics = (
+    periodData: PeriodData, 
+    channel: WalmartChannel, 
+    marketplace: string,
+    category: string,
+    title: string
+  ): BaseMetrics => {
+    const channelData = periodData.channels.find(c => c.channel === channel);
+    const mp = channelData?.marketplaces.find(m => m.marketplace === marketplace);
+    const cat = mp?.categories.find(c => c.category === category);
+    const t = cat?.titles.find(t => t.title === title);
+    return t || emptyMetrics;
+  };
+
   // Build column headers with week numbers
   const twLabel = 'A) TW';
   const lwLabel = lastWeek ? `B) LW (Wk ${lastWeek})` : 'B) LW';
   const twlyLabel = selectedWeek ? `C) TWLY (Wk ${selectedWeek} LY)` : 'C) TWLY';
 
+  const hasActiveFilters = localFilters.masterPrograms.length > 0 || 
+    localFilters.walmartChannels.length > 0 || 
+    localFilters.programNames.length > 0 || 
+    localFilters.categoryNames.length > 0;
+
   return (
     <div className={cn('bg-card rounded-lg border overflow-hidden', className)}>
-      <div className="p-4 border-b">
-        <h3 className="text-lg font-semibold">Sales by Walmart Channel</h3>
-        <p className="text-sm text-muted-foreground">
-          TW = This Week (selected), LW = Last Week, TWLY = This Week Last Year
-        </p>
+      <div className="p-4 border-b flex flex-col lg:flex-row lg:items-start gap-4">
+        <div className="flex-1">
+          <h3 className="text-lg font-semibold">Sales by Walmart Channel</h3>
+          <p className="text-sm text-muted-foreground">
+            TW = This Week (selected), LW = Last Week, TWLY = This Week Last Year
+          </p>
+        </div>
+        
+        {/* Local Filters */}
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <MultiSelect
+            options={filterOptions.masterPrograms.map(p => ({ 
+              value: p, 
+              label: p.length > 18 ? p.slice(0, 18) + '...' : p 
+            }))}
+            selected={localFilters.masterPrograms}
+            onChange={(values) => setLocalFilters(prev => ({ ...prev, masterPrograms: values }))}
+            placeholder="Master Program"
+            className="w-[150px]"
+          />
+          <MultiSelect
+            options={WALMART_CHANNEL_OPTIONS.map(c => ({ value: c, label: c }))}
+            selected={localFilters.walmartChannels}
+            onChange={(values) => setLocalFilters(prev => ({ ...prev, walmartChannels: values as WalmartChannel[] }))}
+            placeholder="Walmart Channel"
+            className="w-[150px]"
+          />
+          <MultiSelect
+            options={filterOptions.programNames.map(p => ({ 
+              value: p, 
+              label: p.length > 18 ? p.slice(0, 18) + '...' : p 
+            }))}
+            selected={localFilters.programNames}
+            onChange={(values) => setLocalFilters(prev => ({ ...prev, programNames: values }))}
+            placeholder="Program"
+            className="w-[130px]"
+          />
+          <MultiSelect
+            options={filterOptions.categoryNames.map(c => ({ 
+              value: c, 
+              label: c.length > 18 ? c.slice(0, 18) + '...' : c 
+            }))}
+            selected={localFilters.categoryNames}
+            onChange={(values) => setLocalFilters(prev => ({ ...prev, categoryNames: values }))}
+            placeholder="Category"
+            className="w-[130px]"
+          />
+          {hasActiveFilters && (
+            <button 
+              onClick={() => setLocalFilters({ masterPrograms: [], walmartChannels: [], programNames: [], categoryNames: [] })}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
       
       <div className="overflow-x-auto">
@@ -371,28 +573,74 @@ export function SalesChannelComparison({
                           const twCat = getCategoryMetrics(twData, channel, marketplace, category);
                           const lwCat = getCategoryMetrics(lwData, channel, marketplace, category);
                           const twlyCat = getCategoryMetrics(twlyData, channel, marketplace, category);
+                          const titles = getTitlesForCategory(channel, marketplace, category);
+                          const isCatExpanded = isCategoryExpanded(channel, marketplace, category);
+                          const hasTitles = titles.length > 0;
 
                           return (
-                            <tr key={`${channel}-${marketplace}-${category}`} className="hover:bg-muted/10 transition-colors text-muted-foreground/70">
-                              <td className="px-3 py-1 pl-14 text-left text-xs truncate max-w-[180px]" title={category}>
-                                {category}
-                              </td>
-                              {/* TW */}
-                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">{twCat.units.toLocaleString()}</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">{formatCurrency(twCat.grossSales)}</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">-</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">-</td>
-                              {/* LW */}
-                              <td className="px-2 py-1 text-right tabular-nums text-xs border-l">{lwCat.units.toLocaleString()}</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs">{formatCurrency(lwCat.grossSales)}</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
-                              {/* TWLY */}
-                              <td className="px-2 py-1 text-right tabular-nums text-xs border-l">{twlyCat.units.toLocaleString()}</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs">{formatCurrency(twlyCat.grossSales)}</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
-                            </tr>
+                            <Fragment key={`${channel}-${marketplace}-${category}`}>
+                              <tr className="hover:bg-muted/10 transition-colors text-muted-foreground/70">
+                                <td className="px-3 py-1 pl-14 text-left text-xs">
+                                  <button 
+                                    onClick={() => toggleCategory(channel, marketplace, category)}
+                                    className="flex items-center gap-1 text-left w-full"
+                                    disabled={!hasTitles}
+                                  >
+                                    {hasTitles ? (
+                                      isCatExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+                                    ) : (
+                                      <span className="w-3" />
+                                    )}
+                                    <span className="truncate max-w-[140px]" title={category}>{category}</span>
+                                  </button>
+                                </td>
+                                {/* TW */}
+                                <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">{twCat.units.toLocaleString()}</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">{formatCurrency(twCat.grossSales)}</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">-</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs bg-primary/5">-</td>
+                                {/* LW */}
+                                <td className="px-2 py-1 text-right tabular-nums text-xs border-l">{lwCat.units.toLocaleString()}</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs">{formatCurrency(lwCat.grossSales)}</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                                {/* TWLY */}
+                                <td className="px-2 py-1 text-right tabular-nums text-xs border-l">{twlyCat.units.toLocaleString()}</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs">{formatCurrency(twlyCat.grossSales)}</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                                <td className="px-2 py-1 text-right tabular-nums text-xs">-</td>
+                              </tr>
+
+                              {/* Title Rows */}
+                              {isCatExpanded && titles.map(title => {
+                                const twTitle = getTitleMetrics(twData, channel, marketplace, category, title);
+                                const lwTitle = getTitleMetrics(lwData, channel, marketplace, category, title);
+                                const twlyTitle = getTitleMetrics(twlyData, channel, marketplace, category, title);
+
+                                return (
+                                  <tr key={`${channel}-${marketplace}-${category}-${title}`} className="hover:bg-muted/5 transition-colors text-muted-foreground/50">
+                                    <td className="px-3 py-0.5 pl-20 text-left text-[11px] truncate max-w-[180px]" title={title}>
+                                      {title}
+                                    </td>
+                                    {/* TW */}
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px] bg-primary/5">{twTitle.units.toLocaleString()}</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px] bg-primary/5">{formatCurrency(twTitle.grossSales)}</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px] bg-primary/5">-</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px] bg-primary/5">-</td>
+                                    {/* LW */}
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px] border-l">{lwTitle.units.toLocaleString()}</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px]">{formatCurrency(lwTitle.grossSales)}</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px]">-</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px]">-</td>
+                                    {/* TWLY */}
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px] border-l">{twlyTitle.units.toLocaleString()}</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px]">{formatCurrency(twlyTitle.grossSales)}</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px]">-</td>
+                                    <td className="px-2 py-0.5 text-right tabular-nums text-[11px]">-</td>
+                                  </tr>
+                                );
+                              })}
+                            </Fragment>
                           );
                         })}
                       </Fragment>
