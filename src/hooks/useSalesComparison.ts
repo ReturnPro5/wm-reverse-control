@@ -152,11 +152,13 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         }, twRaw[0].order_closed_date);
         
         // Parse the max date and calculate ~1 year ago range
+        // Walmart fiscal year is ~52-53 weeks, so look back 11-13 months to capture same week last year
+        // Example: If max date is Jan 2026, TWLY should find Jan 2025 (Week 52 of FY14)
         const maxDateObj = new Date(maxDate);
         const twlyBeforeDate = new Date(maxDateObj);
-        twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 9);
+        twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 10); // ~10 months ago (upper bound)
         const twlyAfterDate = new Date(maxDateObj);
-        twlyAfterDate.setMonth(twlyAfterDate.getMonth() - 15);
+        twlyAfterDate.setMonth(twlyAfterDate.getMonth() - 14); // ~14 months ago (lower bound)
         
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
         const twlyBefore = formatDate(twlyBeforeDate);
