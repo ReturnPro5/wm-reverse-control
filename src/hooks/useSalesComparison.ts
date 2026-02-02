@@ -55,18 +55,11 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       selectedWeek: number | null;
       lastWeek: number | null;
     }> => {
-      // If no week selected, return empty data
-      if (selectedWeek === null) {
-        return { tw: [], lw: [], twly: [], selectedWeek: null, lastWeek: null };
-      }
-
-      // Helper to fetch data for a specific week with optional year constraint
+      // Helper to fetch data with optional week constraint
       const fetchPeriod = async (
         wmWeek: number | null, 
         yearConstraint?: { before?: string; after?: string }
       ): Promise<Tables<'sales_metrics'>[]> => {
-        if (wmWeek === null || wmWeek <= 0) return [];
-        
         const allData: Tables<'sales_metrics'>[] = [];
         let from = 0;
         const pageSize = 1000;
@@ -75,10 +68,14 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           let query = supabase
             .from('sales_metrics')
             .select('*')
-            .eq('wm_week', wmWeek)
             .eq('tag_clientsource', 'WMUS')
             .neq('marketplace_profile_sold_on', 'Transfer')
             .gt('sale_price', 0);
+
+          // Only filter by week if a specific week is provided
+          if (wmWeek !== null && wmWeek > 0) {
+            query = query.eq('wm_week', wmWeek);
+          }
 
           // Apply year constraints for TWLY
           if (yearConstraint?.before) {
@@ -103,6 +100,11 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           }
           if (filters.orderTypesSoldOn.length > 0) {
             query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
+          }
+          
+          // Apply WM Week filter if set (for TW - all selected weeks)
+          if (wmWeek === null && filters.wmWeeks.length > 0) {
+            query = query.in('wm_week', filters.wmWeeks);
           }
 
           query = query.range(from, from + pageSize - 1);
@@ -130,16 +132,16 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       };
 
       // Calculate date boundary for TWLY (approximately 1 year ago)
-      // We'll use a date roughly 11-13 months ago to capture last year's same week
       const today = new Date();
-      const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
       const twlyBefore = `${today.getFullYear()}-01-01`; // Before this calendar year
       const twlyAfter = `${today.getFullYear() - 2}-01-01`; // Not more than 2 years ago
 
+      // TW: Fetch ALL data (no week filter, or filtered by selected weeks if any)
+      // LW/TWLY: Only fetch if a specific week is selected
       const [twRaw, lwRaw, twlyRaw] = await Promise.all([
-        fetchPeriod(selectedWeek),
-        fetchPeriod(lastWeek),
-        fetchPeriod(thisWeekLastYearNumber, { before: twlyBefore, after: twlyAfter }),
+        fetchPeriod(null), // TW = all data (respects wmWeeks filter if set)
+        selectedWeek !== null ? fetchPeriod(lastWeek) : Promise.resolve([]),
+        selectedWeek !== null ? fetchPeriod(selectedWeek, { before: twlyBefore, after: twlyAfter }) : Promise.resolve([]),
       ]);
 
       // Add walmart channel to each record
