@@ -33,18 +33,21 @@ interface MultiSelectProps {
 
 export function MultiSelect({
   options,
-  selected,
+  selected = [],
   onChange,
   placeholder = 'Select...',
   className,
   maxDisplayed = 2,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
+  
+  // Ensure selected is always an array
+  const safeSelected = Array.isArray(selected) ? selected : [];
 
   const handleSelect = (value: string) => {
-    const newSelected = selected.includes(value)
-      ? selected.filter((v) => v !== value)
-      : [...selected, value];
+    const newSelected = safeSelected.includes(value)
+      ? safeSelected.filter((v) => v !== value)
+      : [...safeSelected, value];
     onChange(newSelected);
   };
 
@@ -54,14 +57,14 @@ export function MultiSelect({
   };
 
   const displayText = React.useMemo(() => {
-    if (selected.length === 0) return placeholder;
-    if (selected.length <= maxDisplayed) {
-      return selected
+    if (safeSelected.length === 0) return placeholder;
+    if (safeSelected.length <= maxDisplayed) {
+      return safeSelected
         .map((v) => options.find((o) => o.value === v)?.label || v)
         .join(', ');
     }
-    return `${selected.length} selected`;
-  }, [selected, options, placeholder, maxDisplayed]);
+    return `${safeSelected.length} selected`;
+  }, [safeSelected, options, placeholder, maxDisplayed]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -74,7 +77,7 @@ export function MultiSelect({
         >
           <span className="truncate">{displayText}</span>
           <div className="flex items-center gap-1 ml-2">
-            {selected.length > 0 && (
+            {safeSelected.length > 0 && (
               <X
                 className="h-3 w-3 opacity-50 hover:opacity-100"
                 onClick={handleClear}
@@ -99,7 +102,7 @@ export function MultiSelect({
                   <Check
                     className={cn(
                       'mr-2 h-4 w-4',
-                      selected.includes(option.value) ? 'opacity-100' : 'opacity-0'
+                      safeSelected.includes(option.value) ? 'opacity-100' : 'opacity-0'
                     )}
                   />
                   <span className="truncate">{option.label}</span>
