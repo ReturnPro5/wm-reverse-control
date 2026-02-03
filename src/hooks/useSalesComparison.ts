@@ -168,19 +168,31 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         const lwBefore = formatDate(lwBeforeDate);
         const lwAfter = formatDate(lwAfterDate);
         
-        // TWLY: Look back ~1 year (10-14 months) to capture same week from last fiscal year
-        // Example: If max date is Jan 2026, TWLY should find Jan 2025 (Week 52 of FY24)
-        const twlyBeforeDate = new Date(maxDateObj);
-        twlyBeforeDate.setMonth(twlyBeforeDate.getMonth() - 10); // ~10 months ago (upper bound)
-        const twlyAfterDate = new Date(maxDateObj);
-        twlyAfterDate.setMonth(twlyAfterDate.getMonth() - 14); // ~14 months ago (lower bound)
-        const twlyBefore = formatDate(twlyBeforeDate);
-        const twlyAfter = formatDate(twlyAfterDate);
+        // TWLY: Look back ~1 year to capture the same calendar week from last year
+        // Instead of matching wm_week (which resets each fiscal year), we match by 
+        // date range: approximately 364 days before the current week's dates
+        // This ensures Week 52 of FY26 compares to Week 52 of FY25
+        
+        // Calculate TWLY date range: 1 year ago from current week's start/end
+        const twWeekStart = new Date(maxDateObj);
+        twWeekStart.setDate(twWeekStart.getDate() - 6); // Approximate start of current week
+        
+        const twlyStartDate = new Date(twWeekStart);
+        twlyStartDate.setFullYear(twlyStartDate.getFullYear() - 1);
+        twlyStartDate.setDate(twlyStartDate.getDate() - 3); // Buffer for week alignment
+        
+        const twlyEndDate = new Date(maxDateObj);
+        twlyEndDate.setFullYear(twlyEndDate.getFullYear() - 1);
+        twlyEndDate.setDate(twlyEndDate.getDate() + 4); // Buffer for week alignment
+        
+        const twlyAfter = formatDate(twlyStartDate);
+        const twlyBefore = formatDate(twlyEndDate);
         
         // Fetch LW and TWLY in parallel with proper date constraints
+        // TWLY: Don't filter by wm_week since week numbers differ across fiscal years
         [lwRaw, twlyRaw] = await Promise.all([
           fetchPeriod(lastWeek, { after: lwAfter, before: lwBefore }),
-          fetchPeriod(selectedWeek, { after: twlyAfter, before: twlyBefore }),
+          fetchPeriod(null, { after: twlyAfter, before: twlyBefore }), // null = no week filter
         ]);
       }
 
