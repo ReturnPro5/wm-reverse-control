@@ -181,29 +181,22 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         const lwBefore = formatDate(lwBeforeDate);
         const lwAfter = formatDate(lwAfterDate);
         
-        // TWLY: Look back ~1 year to capture the same calendar week from last year
-        // Use 364 days (52 weeks exactly) to align fiscal weeks properly
-        // Week 52 of FY26 (Jan 24-30, 2026) should compare to Week 52 of FY25 (Jan 18-24, 2025)
+        // TWLY: Capture the ENTIRE previous fiscal year for year-over-year comparison
+        // TW shows current FY aggregate, so TWLY should show prior FY aggregate
+        // Calculate previous fiscal year boundaries
+        const currentFYStart = getWMFiscalYearStart(maxDateObj);
         
-        // Calculate TWLY date range: exactly 364 days (52 weeks) back from current week
-        // This preserves day-of-week alignment across years
-        const twWeekEnd = new Date(maxDateObj);
-        const twWeekStart = new Date(maxDateObj);
-        twWeekStart.setDate(twWeekStart.getDate() - 6); // Saturday start of current week
+        // Get the previous fiscal year start (use a date from ~13 months ago)
+        const dateInPriorFY = new Date(currentFYStart);
+        dateInPriorFY.setMonth(dateInPriorFY.getMonth() - 6); // Go back 6 months into prior FY
+        const priorFYStart = getWMFiscalYearStart(dateInPriorFY);
         
-        // Go back exactly 364 days (52 weeks) to get the equivalent week last year
-        const twlyStartDate = new Date(twWeekStart);
-        twlyStartDate.setDate(twlyStartDate.getDate() - 364);
+        // Prior FY ends the day before current FY starts
+        const priorFYEnd = new Date(currentFYStart);
+        priorFYEnd.setDate(priorFYEnd.getDate() - 1);
         
-        const twlyEndDate = new Date(twWeekEnd);
-        twlyEndDate.setDate(twlyEndDate.getDate() - 364);
-        
-        // Add buffer for any date edge cases
-        twlyStartDate.setDate(twlyStartDate.getDate() - 1);
-        twlyEndDate.setDate(twlyEndDate.getDate() + 1);
-        
-        const twlyAfter = formatDate(twlyStartDate);
-        const twlyBefore = formatDate(twlyEndDate);
+        const twlyAfter = formatDate(priorFYStart);
+        const twlyBefore = formatDate(priorFYEnd);
         
         // Fetch LW and TWLY in parallel with proper date constraints
         // TWLY: Don't filter by wm_week since week numbers differ across fiscal years
