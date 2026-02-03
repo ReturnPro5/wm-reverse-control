@@ -291,9 +291,22 @@ export function useFilteredSales(tabName: TabName = 'sales') {
     queryKey: ['filtered-sales', tabName, filterKey],
     staleTime: 0, // Always refetch when filters change
     queryFn: async () => {
-      // Calculate fiscal year start date to prevent stacking TY/LY data
-      const today = new Date();
-      const fiscalYearStart = getWMFiscalYearStart(today);
+      // First, determine the actual date range of the data to calculate proper fiscal year
+      const { data: sampleData } = await supabase
+        .from('sales_metrics')
+        .select('order_closed_date')
+        .eq('tag_clientsource', 'WMUS')
+        .neq('marketplace_profile_sold_on', 'Transfer')
+        .gt('sale_price', 0)
+        .order('order_closed_date', { ascending: false })
+        .limit(1);
+      
+      // Determine fiscal year based on actual data, not system date
+      const maxDataDate = sampleData && sampleData.length > 0 
+        ? new Date(sampleData[0].order_closed_date)
+        : new Date();
+      
+      const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
       const fiscalYearStartStr = fiscalYearStart.toISOString().split('T')[0];
       
       // Fetch all records using pagination to bypass 1000 row limit
