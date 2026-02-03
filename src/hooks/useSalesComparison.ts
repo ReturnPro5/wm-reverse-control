@@ -136,21 +136,33 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       };
 
       // All periods need date constraints to prevent stacking data across fiscal years
-      // TW: Current fiscal year only (last ~9 months from today to capture most recent data)
-      // LW: Last ~3 months from max TW date
-      // TWLY: 10-14 months ago to capture same week from last fiscal year
+      // First, fetch a small sample to determine the actual date range of the data
+      // Then use that to calculate proper fiscal year boundaries
       
       const formatDate = (d: Date) => d.toISOString().split('T')[0];
-      const today = new Date();
       
-      // TW: Use the actual Walmart Fiscal Year start date (Saturday closest to Feb 1)
-      // This ensures we only get current FY data, not stacking prior year sales
-      // For FY26, the start is Feb 1, 2025 (which is a Saturday)
-      const fiscalYearStart = getWMFiscalYearStart(today);
+      // First, get a sample of recent data to determine the actual fiscal year context
+      // We query without date constraints first to find the max date in the dataset
+      const { data: sampleData } = await supabase
+        .from('sales_metrics')
+        .select('order_closed_date')
+        .eq('tag_clientsource', 'WMUS')
+        .neq('marketplace_profile_sold_on', 'Transfer')
+        .gt('sale_price', 0)
+        .order('order_closed_date', { ascending: false })
+        .limit(1);
+      
+      // Determine the fiscal year based on actual data, not system date
+      const maxDataDate = sampleData && sampleData.length > 0 
+        ? new Date(sampleData[0].order_closed_date)
+        : new Date();
+      
+      // TW: Use the actual Walmart Fiscal Year start date based on the data's max date
+      // This ensures we correctly identify the current fiscal year from the data
+      const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
       const twAfter = formatDate(fiscalYearStart);
       
-      // TW: Fetch all data from current fiscal year start to today (no upper bound)
-      // Pass an empty year constraint object to avoid applying any 'before' date filter
+      // TW: Fetch all data from current fiscal year start (no upper bound)
       const twRaw = await fetchPeriod(null, { after: twAfter }); // TW = current FY data only
       
       // Calculate date ranges based on actual data for LW and TWLY
