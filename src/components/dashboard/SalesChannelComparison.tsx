@@ -390,6 +390,8 @@ export function SalesChannelComparison({
     localFilters.categoryNames.length > 0;
 
   // Export to CSV function
+  const formatCurrencyForExport = (value: number) => `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  
   const exportToCSV = useCallback(() => {
     const rows: string[][] = [];
     
@@ -401,53 +403,12 @@ export function SalesChannelComparison({
       'TWLY Units', 'TWLY Gross Sales', 'TWLY Net Dollars', 'TWLY Net Recovery %'
     ]);
 
-    // Add data rows for each level in the hierarchy
+    // Add only title-level (line item) rows
     WALMART_CHANNEL_OPTIONS.forEach(channel => {
-      const twChannel = twData.channels.find(c => c.channel === channel);
-      const lwChannel = lwData.channels.find(c => c.channel === channel);
-      const twlyChannel = twlyData.channels.find(c => c.channel === channel);
-      
-      const twMetrics = twChannel?.metrics || emptyMetrics;
-      const lwMetrics = lwChannel?.metrics || emptyMetrics;
-      const twlyMetrics = twlyChannel?.metrics || emptyMetrics;
-
-      // Channel summary row
-      rows.push([
-        channel, '', '', '',
-        twMetrics.units.toString(), twMetrics.grossSales.toFixed(2), '', '',
-        lwMetrics.units.toString(), lwMetrics.grossSales.toFixed(2), '', '',
-        twlyMetrics.units.toString(), twlyMetrics.grossSales.toFixed(2), '', ''
-      ]);
-
-      // Marketplace rows
       const marketplaces = getMarketplacesForChannel(channel);
       marketplaces.forEach(marketplace => {
-        const twMp = getMarketplaceMetrics(twData, channel, marketplace);
-        const lwMp = getMarketplaceMetrics(lwData, channel, marketplace);
-        const twlyMp = getMarketplaceMetrics(twlyData, channel, marketplace);
-
-        rows.push([
-          channel, marketplace, '', '',
-          twMp.units.toString(), twMp.grossSales.toFixed(2), '', '',
-          lwMp.units.toString(), lwMp.grossSales.toFixed(2), '', '',
-          twlyMp.units.toString(), twlyMp.grossSales.toFixed(2), '', ''
-        ]);
-
-        // Category rows
         const categories = getCategoriesForMarketplace(channel, marketplace);
         categories.forEach(category => {
-          const twCat = getCategoryMetrics(twData, channel, marketplace, category);
-          const lwCat = getCategoryMetrics(lwData, channel, marketplace, category);
-          const twlyCat = getCategoryMetrics(twlyData, channel, marketplace, category);
-
-          rows.push([
-            channel, marketplace, category, '',
-            twCat.units.toString(), twCat.grossSales.toFixed(2), '', '',
-            lwCat.units.toString(), lwCat.grossSales.toFixed(2), '', '',
-            twlyCat.units.toString(), twlyCat.grossSales.toFixed(2), '', ''
-          ]);
-
-          // Title rows
           const titles = getTitlesForCategory(channel, marketplace, category);
           titles.forEach(title => {
             const twTitle = getTitleMetrics(twData, channel, marketplace, category, title);
@@ -456,22 +417,14 @@ export function SalesChannelComparison({
 
             rows.push([
               channel, marketplace, category, title,
-              twTitle.units.toString(), twTitle.grossSales.toFixed(2), '', '',
-              lwTitle.units.toString(), lwTitle.grossSales.toFixed(2), '', '',
-              twlyTitle.units.toString(), twlyTitle.grossSales.toFixed(2), '', ''
+              twTitle.units.toString(), formatCurrencyForExport(twTitle.grossSales), '', '',
+              lwTitle.units.toString(), formatCurrencyForExport(lwTitle.grossSales), '', '',
+              twlyTitle.units.toString(), formatCurrencyForExport(twlyTitle.grossSales), '', ''
             ]);
           });
         });
       });
     });
-
-    // Add total row
-    rows.push([
-      'Total', '', '', '',
-      twData.total.units.toString(), twData.total.grossSales.toFixed(2), '', '',
-      lwData.total.units.toString(), lwData.total.grossSales.toFixed(2), '', '',
-      twlyData.total.units.toString(), twlyData.total.grossSales.toFixed(2), '', ''
-    ]);
 
     // Convert to CSV string
     const csvContent = rows.map(row => 
