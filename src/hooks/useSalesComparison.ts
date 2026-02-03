@@ -145,9 +145,12 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       
       // TW: Use the actual Walmart Fiscal Year start date (Saturday closest to Feb 1)
       // This ensures we only get current FY data, not stacking prior year sales
+      // For FY26, the start is Feb 1, 2025 (which is a Saturday)
       const fiscalYearStart = getWMFiscalYearStart(today);
       const twAfter = formatDate(fiscalYearStart);
       
+      // TW: Fetch all data from current fiscal year start to today (no upper bound)
+      // Pass an empty year constraint object to avoid applying any 'before' date filter
       const twRaw = await fetchPeriod(null, { after: twAfter }); // TW = current FY data only
       
       // Calculate date ranges based on actual data for LW and TWLY
