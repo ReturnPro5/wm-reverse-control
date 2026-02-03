@@ -159,14 +159,15 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         : new Date();
       
       // TW: Use the actual Walmart Fiscal Year start date based on the data's max date
-      // This ensures we correctly identify the current fiscal year from the data
       const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
       const twAfter = formatDate(fiscalYearStart);
       
-      // TW: Fetch data for selected weeks only, with fiscal year boundary
-      // If wmWeeks is selected, query directly with those weeks (not null)
-      // This ensures TW matches the same data as useFilteredSales
-      const twRaw = await fetchPeriod(null, { after: twAfter }, false); // TW = current FY data with wmWeeks filter
+      // TW: Fetch data for selected weeks only (matching KPI cards behavior)
+      // If wmWeeks filter is set, use the selected week; otherwise use the derived week from data
+      const twWeekToQuery = selectedWeek;
+      const twRaw = twWeekToQuery 
+        ? await fetchPeriod(twWeekToQuery, { after: twAfter }, true) // Explicitly query the selected week
+        : await fetchPeriod(null, { after: twAfter }, false); // No week selected = all current FY data
       
       // Calculate date ranges based on actual data for LW and TWLY
       let lwRaw: Tables<'sales_metrics'>[] = [];
