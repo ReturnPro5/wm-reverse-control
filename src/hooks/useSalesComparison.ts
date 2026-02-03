@@ -57,9 +57,11 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       lastWeek: number | null;
     }> => {
       // Helper to fetch data with optional week constraint
+      // skipWmWeekFilter: when true, don't apply any wmWeek filtering (used for TWLY date-based queries)
       const fetchPeriod = async (
         wmWeek: number | null, 
-        yearConstraint?: { before?: string; after?: string }
+        yearConstraint?: { before?: string; after?: string },
+        skipWmWeekFilter: boolean = false
       ): Promise<Tables<'sales_metrics'>[]> => {
         const allData: Tables<'sales_metrics'>[] = [];
         let from = 0;
@@ -104,7 +106,8 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           }
           
           // Apply WM Week filter if set (for TW - all selected weeks)
-          if (wmWeek === null && filters.wmWeeks.length > 0) {
+          // Skip this for TWLY queries which use date-based filtering instead
+          if (!skipWmWeekFilter && wmWeek === null && filters.wmWeeks.length > 0) {
             query = query.in('wm_week', filters.wmWeeks);
           }
 
@@ -151,11 +154,21 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       let lwRaw: Tables<'sales_metrics'>[] = [];
       let twlyRaw: Tables<'sales_metrics'>[] = [];
       
-      if (selectedWeek !== null && twRaw.length > 0) {
+      if (twRaw.length > 0) {
+        // Get max date and max week from TW data to determine comparison periods
         const maxDate = twRaw.reduce((max, r) => {
           const d = r.order_closed_date;
           return d > max ? d : max;
         }, twRaw[0].order_closed_date);
+        
+        // Derive the actual current week from data if none selected
+        const derivedWeek = selectedWeek ?? twRaw.reduce((max, r) => {
+          const w = r.wm_week ?? 0;
+          return w > max ? w : max;
+        }, 0);
+        
+        // LW: the week before the derived week
+        const derivedLastWeek = derivedWeek === 1 ? 52 : derivedWeek - 1;
         
         const maxDateObj = new Date(maxDate);
         
@@ -190,9 +203,10 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         
         // Fetch LW and TWLY in parallel with proper date constraints
         // TWLY: Don't filter by wm_week since week numbers differ across fiscal years
+        // Pass skipWmWeekFilter=true for TWLY to prevent applying selected wmWeeks filter
         [lwRaw, twlyRaw] = await Promise.all([
-          fetchPeriod(lastWeek, { after: lwAfter, before: lwBefore }),
-          fetchPeriod(null, { after: twlyAfter, before: twlyBefore }), // null = no week filter
+          fetchPeriod(derivedLastWeek, { after: lwAfter, before: lwBefore }, false),
+          fetchPeriod(null, { after: twlyAfter, before: twlyBefore }, true), // skipWmWeekFilter=true
         ]);
       }
 
