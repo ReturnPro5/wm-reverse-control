@@ -56,70 +56,76 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       selectedWeek: number | null;
       lastWeek: number | null;
     }> => {
-      // Helper to fetch data with optional week constraint
-      // skipWmWeekFilter: when true, don't apply any wmWeek filtering (used for TWLY date-based queries)
-      // Fetch period with explicit week list or date constraints
-      // wmWeeks: array of weeks to fetch (null = no week filter)
-      // yearConstraint: date boundaries for TWLY queries
-      const fetchPeriod = async (
-        wmWeeks: number[] | null, 
-        yearConstraint?: { before?: string; after?: string },
+      const formatDate = (d: Date) => d.toISOString().split('T')[0];
+      
+      // Get max date from data to determine fiscal year context
+      const { data: sampleData } = await supabase
+        .from('sales_metrics')
+        .select('order_closed_date')
+        .eq('tag_clientsource', 'WMUS')
+        .neq('marketplace_profile_sold_on', 'Transfer')
+        .gt('sale_price', 0)
+        .order('order_closed_date', { ascending: false })
+        .limit(1);
+      
+      const maxDataDate = sampleData && sampleData.length > 0 
+        ? new Date(sampleData[0].order_closed_date + 'T12:00:00')
+        : new Date();
+      
+      const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
+      const fiscalYearStartStr = formatDate(fiscalYearStart);
+      
+      // Helper to build base query with all filters (matches useFilteredSales EXACTLY)
+      const buildBaseQuery = () => {
+        let query = supabase
+          .from('sales_metrics')
+          .select('*')
+          .eq('tag_clientsource', 'WMUS')
+          .neq('marketplace_profile_sold_on', 'Transfer')
+          .gt('sale_price', 0);
+        
+        // Apply data filters
+        if (filters.programNames.length > 0) {
+          query = query.in('program_name', filters.programNames);
+        }
+        if (filters.facilities.length > 0) {
+          query = query.in('facility', filters.facilities);
+        }
+        if (filters.categoryNames.length > 0) {
+          query = query.in('category_name', filters.categoryNames);
+        }
+        if (filters.marketplacesSoldOn.length > 0) {
+          query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
+        }
+        if (filters.orderTypesSoldOn.length > 0) {
+          query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
+        }
+        
+        return query;
+      };
+      
+      // Paginated fetch helper
+      const fetchAllPages = async (
+        queryBuilder: (q: ReturnType<typeof buildBaseQuery>) => ReturnType<typeof buildBaseQuery>
       ): Promise<Tables<'sales_metrics'>[]> => {
         const allData: Tables<'sales_metrics'>[] = [];
         let from = 0;
         const pageSize = 1000;
 
         while (true) {
-          let query = supabase
-            .from('sales_metrics')
-            .select('*')
-            .eq('tag_clientsource', 'WMUS')
-            .neq('marketplace_profile_sold_on', 'Transfer')
-            .gt('sale_price', 0);
-
-          // Apply week filter if provided - use ALL weeks in the array
-          if (wmWeeks !== null && wmWeeks.length > 0) {
-            query = query.in('wm_week', wmWeeks);
-          }
-
-          // Apply year constraints for TWLY
-          if (yearConstraint?.before) {
-            query = query.lt('order_closed_date', yearConstraint.before);
-          }
-          if (yearConstraint?.after) {
-            query = query.gte('order_closed_date', yearConstraint.after);
-          }
-
-          // Apply additional filters
-          if (filters.programNames.length > 0) {
-            query = query.in('program_name', filters.programNames);
-          }
-          if (filters.facilities.length > 0) {
-            query = query.in('facility', filters.facilities);
-          }
-          if (filters.categoryNames.length > 0) {
-            query = query.in('category_name', filters.categoryNames);
-          }
-          if (filters.marketplacesSoldOn.length > 0) {
-            query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
-          }
-          if (filters.orderTypesSoldOn.length > 0) {
-            query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
-          }
-
+          let query = queryBuilder(buildBaseQuery());
           query = query.range(from, from + pageSize - 1);
 
           const { data, error } = await query;
           if (error) throw error;
-
           if (!data || data.length === 0) break;
+          
           allData.push(...data);
-
           if (data.length < pageSize) break;
           from += pageSize;
         }
 
-        // Filter excluded files and owned programs
+        // Filter excluded files and owned programs (client-side, matches useFilteredSales)
         let filtered = allData.filter(row => 
           !row.file_upload_id || !filters.excludedFileIds.includes(row.file_upload_id)
         );
@@ -131,91 +137,61 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         return filtered;
       };
 
-      // All periods need date constraints to prevent stacking data across fiscal years
-      // First, fetch a small sample to determine the actual date range of the data
-      // Then use that to calculate proper fiscal year boundaries
-      
-      const formatDate = (d: Date) => d.toISOString().split('T')[0];
-      
-      // First, get a sample of recent data to determine the actual fiscal year context
-      // We query without date constraints first to find the max date in the dataset
-      const { data: sampleData } = await supabase
-        .from('sales_metrics')
-        .select('order_closed_date')
-        .eq('tag_clientsource', 'WMUS')
-        .neq('marketplace_profile_sold_on', 'Transfer')
-        .gt('sale_price', 0)
-        .order('order_closed_date', { ascending: false })
-        .limit(1);
-      
-      // Determine the fiscal year based on actual data, not system date
-      // Parse date with time to avoid timezone issues (add noon time)
-      const maxDataDate = sampleData && sampleData.length > 0 
-        ? new Date(sampleData[0].order_closed_date + 'T12:00:00')
-        : new Date();
-      
-      // TW: Use the actual Walmart Fiscal Year start date based on the data's max date
-      const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
-      const twAfter = formatDate(fiscalYearStart);
-      
-      // TW: Fetch data for ALL selected weeks (matching KPI cards behavior)
-      // Use filters.wmWeeks directly to ensure consistency
-      const twWeeksToQuery = filters.wmWeeks.length > 0 ? filters.wmWeeks : null;
-      const twRaw = await fetchPeriod(twWeeksToQuery, { after: twAfter });
-      
-      // Calculate date ranges based on actual data for LW and TWLY
+      // TW: Use EXACT same logic as useFilteredSales - apply wmWeeks filter and fiscal year boundary
+      const twRaw = await fetchAllPages(q => {
+        let query = q.gte('order_closed_date', fiscalYearStartStr);
+        if (filters.wmWeeks.length > 0) {
+          query = query.in('wm_week', filters.wmWeeks);
+        }
+        return query;
+      });
+
+      // Calculate LW and TWLY only if we have TW data
       let lwRaw: Tables<'sales_metrics'>[] = [];
       let twlyRaw: Tables<'sales_metrics'>[] = [];
-      
+
       if (twRaw.length > 0) {
-        // Get max date and max week from TW data to determine comparison periods
-        const maxDate = twRaw.reduce((max, r) => {
-          const d = r.order_closed_date;
-          return d > max ? d : max;
-        }, twRaw[0].order_closed_date);
-        
-        // Derive the actual current week from data if none selected
+        // Derive the week for LW calculation
         const derivedWeek = selectedWeek ?? twRaw.reduce((max, r) => {
           const w = r.wm_week ?? 0;
           return w > max ? w : max;
         }, 0);
         
-        // LW: the week before the derived week
         const derivedLastWeek = derivedWeek === 1 ? 52 : derivedWeek - 1;
+
+        // Get max date from TW data for LW date constraints
+        const maxDate = twRaw.reduce((max, r) => {
+          const d = r.order_closed_date;
+          return d > max ? d : max;
+        }, twRaw[0].order_closed_date);
         
-        const maxDateObj = new Date(maxDate);
-        
-        // LW: Look at data within current fiscal year context (last ~3 months from max date)
-        // This prevents pulling in last year's same week number
+        const maxDateObj = new Date(maxDate + 'T12:00:00');
+
+        // LW: Previous week with date constraints to avoid prior year overlap
         const lwBeforeDate = new Date(maxDateObj);
-        lwBeforeDate.setDate(lwBeforeDate.getDate() + 7); // Include up to a week after max
+        lwBeforeDate.setDate(lwBeforeDate.getDate() + 7);
         const lwAfterDate = new Date(maxDateObj);
-        lwAfterDate.setMonth(lwAfterDate.getMonth() - 3); // ~3 months back
-        const lwBefore = formatDate(lwBeforeDate);
-        const lwAfter = formatDate(lwAfterDate);
+        lwAfterDate.setMonth(lwAfterDate.getMonth() - 3);
         
-        // TWLY: Capture the ENTIRE previous fiscal year for year-over-year comparison
-        // TW shows current FY aggregate, so TWLY should show prior FY aggregate
-        // Calculate previous fiscal year boundaries
+        // TWLY: Entire previous fiscal year
         const currentFYStart = getWMFiscalYearStart(maxDateObj);
-        
-        // Get the previous fiscal year start (use a date from ~13 months ago)
         const dateInPriorFY = new Date(currentFYStart);
-        dateInPriorFY.setMonth(dateInPriorFY.getMonth() - 6); // Go back 6 months into prior FY
+        dateInPriorFY.setMonth(dateInPriorFY.getMonth() - 6);
         const priorFYStart = getWMFiscalYearStart(dateInPriorFY);
-        
-        // Prior FY ends the day before current FY starts
         const priorFYEnd = new Date(currentFYStart);
         priorFYEnd.setDate(priorFYEnd.getDate() - 1);
-        
-        const twlyAfter = formatDate(priorFYStart);
-        const twlyBefore = formatDate(priorFYEnd);
-        
-        // Fetch LW and TWLY in parallel with proper date constraints
-        // TWLY: Don't filter by wm_week since week numbers differ across fiscal years
+
+        // Fetch LW and TWLY in parallel
         [lwRaw, twlyRaw] = await Promise.all([
-          fetchPeriod([derivedLastWeek], { after: lwAfter, before: lwBefore }),
-          fetchPeriod(null, { after: twlyAfter, before: twlyBefore }),
+          fetchAllPages(q => q
+            .in('wm_week', [derivedLastWeek])
+            .gte('order_closed_date', formatDate(lwAfterDate))
+            .lt('order_closed_date', formatDate(lwBeforeDate))
+          ),
+          fetchAllPages(q => q
+            .gte('order_closed_date', formatDate(priorFYStart))
+            .lt('order_closed_date', formatDate(priorFYEnd))
+          ),
         ]);
       }
 
