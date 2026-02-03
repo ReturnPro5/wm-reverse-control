@@ -182,21 +182,25 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         const lwAfter = formatDate(lwAfterDate);
         
         // TWLY: Look back ~1 year to capture the same calendar week from last year
-        // Instead of matching wm_week (which resets each fiscal year), we match by 
-        // date range: approximately 364 days before the current week's dates
-        // This ensures Week 52 of FY26 compares to Week 52 of FY25
+        // Use 364 days (52 weeks exactly) to align fiscal weeks properly
+        // Week 52 of FY26 (Jan 24-30, 2026) should compare to Week 52 of FY25 (Jan 18-24, 2025)
         
-        // Calculate TWLY date range: 1 year ago from current week's start/end
+        // Calculate TWLY date range: exactly 364 days (52 weeks) back from current week
+        // This preserves day-of-week alignment across years
+        const twWeekEnd = new Date(maxDateObj);
         const twWeekStart = new Date(maxDateObj);
-        twWeekStart.setDate(twWeekStart.getDate() - 6); // Approximate start of current week
+        twWeekStart.setDate(twWeekStart.getDate() - 6); // Saturday start of current week
         
+        // Go back exactly 364 days (52 weeks) to get the equivalent week last year
         const twlyStartDate = new Date(twWeekStart);
-        twlyStartDate.setFullYear(twlyStartDate.getFullYear() - 1);
-        twlyStartDate.setDate(twlyStartDate.getDate() - 3); // Buffer for week alignment
+        twlyStartDate.setDate(twlyStartDate.getDate() - 364);
         
-        const twlyEndDate = new Date(maxDateObj);
-        twlyEndDate.setFullYear(twlyEndDate.getFullYear() - 1);
-        twlyEndDate.setDate(twlyEndDate.getDate() + 4); // Buffer for week alignment
+        const twlyEndDate = new Date(twWeekEnd);
+        twlyEndDate.setDate(twlyEndDate.getDate() - 364);
+        
+        // Add buffer for any date edge cases
+        twlyStartDate.setDate(twlyStartDate.getDate() - 1);
+        twlyEndDate.setDate(twlyEndDate.getDate() + 1);
         
         const twlyAfter = formatDate(twlyStartDate);
         const twlyBefore = formatDate(twlyEndDate);
