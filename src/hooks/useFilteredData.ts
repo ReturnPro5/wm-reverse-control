@@ -302,8 +302,9 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         .limit(1);
       
       // Determine fiscal year based on actual data, not system date
+      // Parse date with time to avoid timezone issues (add noon time)
       const maxDataDate = sampleData && sampleData.length > 0 
-        ? new Date(sampleData[0].order_closed_date)
+        ? new Date(sampleData[0].order_closed_date + 'T12:00:00')
         : new Date();
       
       const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
