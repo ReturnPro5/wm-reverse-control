@@ -24,27 +24,37 @@ export function getWMDayOfWeek(date: Date): number {
 
 export function getWMFiscalYearStart(date: Date): Date {
   // WM fiscal year starts on the Saturday closest to Feb 1
-  // If date is in January, we're still in the previous fiscal year
-  const weekStart = getWMWeekStart(date);
-  const fiscalStartYear = weekStart.getMonth() === 0 ? weekStart.getFullYear() - 1 : weekStart.getFullYear();
+  // Helper to find the Saturday closest to Feb 1 for a given year
+  const getFiscalYearStartForYear = (year: number): Date => {
+    const feb1 = new Date(year, 1, 1); // Feb 1
+    const feb1DayOfWeek = feb1.getDay(); // 0 = Sunday, 6 = Saturday
+    
+    if (feb1DayOfWeek === 6) {
+      // Feb 1 is Saturday
+      return feb1;
+    }
+    
+    // Find the Saturday closest to Feb 1
+    const daysToPrevSat = feb1DayOfWeek === 0 ? 1 : feb1DayOfWeek + 1;
+    const daysToNextSat = 6 - feb1DayOfWeek;
+    
+    if (daysToPrevSat <= daysToNextSat) {
+      return new Date(year, 1, 1 - daysToPrevSat);
+    } else {
+      return new Date(year, 1, 1 + daysToNextSat);
+    }
+  };
   
-  const feb1 = new Date(fiscalStartYear, 1, 1); // Feb 1
-  const feb1DayOfWeek = feb1.getDay(); // 0 = Sunday, 6 = Saturday
+  // Calculate fiscal year start for the current year and previous year
+  const dateYear = date.getFullYear();
+  const currentYearFYStart = getFiscalYearStartForYear(dateYear);
   
-  if (feb1DayOfWeek === 6) {
-    // Feb 1 is Saturday
-    return feb1;
+  // If the date is before this year's FY start, we're in the previous fiscal year
+  if (date < currentYearFYStart) {
+    return getFiscalYearStartForYear(dateYear - 1);
   }
   
-  // Find the Saturday closest to Feb 1
-  const daysToPrevSat = feb1DayOfWeek === 0 ? 1 : feb1DayOfWeek + 1;
-  const daysToNextSat = 6 - feb1DayOfWeek;
-  
-  if (daysToPrevSat <= daysToNextSat) {
-    return new Date(fiscalStartYear, 1, 1 - daysToPrevSat);
-  } else {
-    return new Date(fiscalStartYear, 1, 1 + daysToNextSat);
-  }
+  return currentYearFYStart;
 }
 
 export function getWMWeekNumber(date: Date): number {
