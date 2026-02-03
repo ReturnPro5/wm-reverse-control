@@ -163,8 +163,10 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
       const twAfter = formatDate(fiscalYearStart);
       
-      // TW: Fetch all data from current fiscal year start (no upper bound)
-      const twRaw = await fetchPeriod(null, { after: twAfter }); // TW = current FY data only
+      // TW: Fetch data for selected weeks only, with fiscal year boundary
+      // If wmWeeks is selected, query directly with those weeks (not null)
+      // This ensures TW matches the same data as useFilteredSales
+      const twRaw = await fetchPeriod(null, { after: twAfter }, false); // TW = current FY data with wmWeeks filter
       
       // Calculate date ranges based on actual data for LW and TWLY
       let lwRaw: Tables<'sales_metrics'>[] = [];
