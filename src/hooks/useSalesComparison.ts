@@ -58,10 +58,12 @@ export function useSalesComparison(tabName: TabName = 'sales') {
     }> => {
       // Helper to fetch data with optional week constraint
       // skipWmWeekFilter: when true, don't apply any wmWeek filtering (used for TWLY date-based queries)
+      // Fetch period with explicit week list or date constraints
+      // wmWeeks: array of weeks to fetch (null = no week filter)
+      // yearConstraint: date boundaries for TWLY queries
       const fetchPeriod = async (
-        wmWeek: number | null, 
+        wmWeeks: number[] | null, 
         yearConstraint?: { before?: string; after?: string },
-        skipWmWeekFilter: boolean = false
       ): Promise<Tables<'sales_metrics'>[]> => {
         const allData: Tables<'sales_metrics'>[] = [];
         let from = 0;
@@ -75,9 +77,9 @@ export function useSalesComparison(tabName: TabName = 'sales') {
             .neq('marketplace_profile_sold_on', 'Transfer')
             .gt('sale_price', 0);
 
-          // Only filter by week if a specific week is provided
-          if (wmWeek !== null && wmWeek > 0) {
-            query = query.eq('wm_week', wmWeek);
+          // Apply week filter if provided - use ALL weeks in the array
+          if (wmWeeks !== null && wmWeeks.length > 0) {
+            query = query.in('wm_week', wmWeeks);
           }
 
           // Apply year constraints for TWLY
@@ -103,12 +105,6 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           }
           if (filters.orderTypesSoldOn.length > 0) {
             query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
-          }
-          
-          // Apply WM Week filter if set (for TW - all selected weeks)
-          // Skip this for TWLY queries which use date-based filtering instead
-          if (!skipWmWeekFilter && wmWeek === null && filters.wmWeeks.length > 0) {
-            query = query.in('wm_week', filters.wmWeeks);
           }
 
           query = query.range(from, from + pageSize - 1);
@@ -162,12 +158,10 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
       const twAfter = formatDate(fiscalYearStart);
       
-      // TW: Fetch data for selected weeks only (matching KPI cards behavior)
-      // If wmWeeks filter is set, use the selected week; otherwise use the derived week from data
-      const twWeekToQuery = selectedWeek;
-      const twRaw = twWeekToQuery 
-        ? await fetchPeriod(twWeekToQuery, { after: twAfter }, true) // Explicitly query the selected week
-        : await fetchPeriod(null, { after: twAfter }, false); // No week selected = all current FY data
+      // TW: Fetch data for ALL selected weeks (matching KPI cards behavior)
+      // Use filters.wmWeeks directly to ensure consistency
+      const twWeeksToQuery = filters.wmWeeks.length > 0 ? filters.wmWeeks : null;
+      const twRaw = await fetchPeriod(twWeeksToQuery, { after: twAfter });
       
       // Calculate date ranges based on actual data for LW and TWLY
       let lwRaw: Tables<'sales_metrics'>[] = [];
@@ -219,10 +213,9 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         
         // Fetch LW and TWLY in parallel with proper date constraints
         // TWLY: Don't filter by wm_week since week numbers differ across fiscal years
-        // Pass skipWmWeekFilter=true for TWLY to prevent applying selected wmWeeks filter
         [lwRaw, twlyRaw] = await Promise.all([
-          fetchPeriod(derivedLastWeek, { after: lwAfter, before: lwBefore }, false),
-          fetchPeriod(null, { after: twlyAfter, before: twlyBefore }, true), // skipWmWeekFilter=true
+          fetchPeriod([derivedLastWeek], { after: lwAfter, before: lwBefore }),
+          fetchPeriod(null, { after: twlyAfter, before: twlyBefore }),
         ]);
       }
 
