@@ -291,25 +291,6 @@ export function useFilteredSales(tabName: TabName = 'sales') {
     queryKey: ['filtered-sales', tabName, filterKey],
     staleTime: 0, // Always refetch when filters change
     queryFn: async () => {
-      // First, determine the actual date range of the data to calculate proper fiscal year
-      const { data: sampleData } = await supabase
-        .from('sales_metrics')
-        .select('order_closed_date')
-        .eq('tag_clientsource', 'WMUS')
-        .neq('marketplace_profile_sold_on', 'Transfer')
-        .gt('sale_price', 0)
-        .order('order_closed_date', { ascending: false })
-        .limit(1);
-      
-      // Determine fiscal year based on actual data, not system date
-      // Parse date with time to avoid timezone issues (add noon time)
-      const maxDataDate = sampleData && sampleData.length > 0 
-        ? new Date(sampleData[0].order_closed_date + 'T12:00:00')
-        : new Date();
-      
-      const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
-      const fiscalYearStartStr = fiscalYearStart.toISOString().split('T')[0];
-      
       // Fetch all records using pagination to bypass 1000 row limit
       const allData: Tables<'sales_metrics'>[] = [];
       let from = 0;
@@ -321,8 +302,9 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         // Exclude transfers and $0 sales for accurate unit counts
         query = query.neq('marketplace_profile_sold_on', 'Transfer');
         query = query.gt('sale_price', 0);
-        // Only fetch current fiscal year data to prevent stacking TY/LY
-        query = query.gte('order_closed_date', fiscalYearStartStr);
+        // NOTE: Fiscal year boundary filter REMOVED - it was incorrectly excluding
+        // January weeks (like WK52) that fall before the Feb 1 fiscal year start.
+        // The wmWeeks filter already ensures we get only the weeks we want.
         query = query.range(from, from + pageSize - 1);
         
         const { data, error } = await query;

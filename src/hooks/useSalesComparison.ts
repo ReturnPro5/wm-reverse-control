@@ -56,27 +56,6 @@ export function useSalesComparison(tabName: TabName = 'sales') {
     }> => {
       const formatDate = (d: Date) => d.toISOString().split('T')[0];
       
-      // Get max date from data to determine fiscal year context
-      const { data: sampleData } = await supabase
-        .from('sales_metrics')
-        .select('order_closed_date')
-        .eq('tag_clientsource', 'WMUS')
-        .neq('marketplace_profile_sold_on', 'Transfer')
-        .gt('sale_price', 0)
-        .order('order_closed_date', { ascending: false })
-        .limit(1);
-      
-      const maxDataDate = sampleData && sampleData.length > 0 
-        ? new Date(sampleData[0].order_closed_date + 'T12:00:00')
-        : new Date();
-      
-      const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
-      const fiscalYearStartStr = formatDate(fiscalYearStart);
-      
-      /**
-       * CRITICAL: This function MUST match useFilteredSales EXACTLY.
-       * Any deviation causes KPI cards and TW column to diverge.
-       */
       /**
        * CRITICAL: This function MUST match useFilteredData.ts applyFilters() EXACTLY.
        * Any deviation causes KPI cards and TW column to diverge.
@@ -86,16 +65,18 @@ export function useSalesComparison(tabName: TabName = 'sales') {
        * 2. programNames
        * 3. facilities
        * 4. categoryNames
-       * 5. tagClientOwnerships (was MISSING - now added)
+       * 5. tagClientOwnerships
        * 6. tag_clientsource = 'WMUS' (always)
        * 7. marketplacesSoldOn
        * 8. orderTypesSoldOn
        * 9. locationIds
        * 10. Exclude transfers and $0 sales
+       * 
+       * NOTE: Fiscal year boundary filter REMOVED - it was incorrectly excluding
+       * January weeks (like WK52) that fall before the Feb 1 fiscal year start.
        */
       const applyAllFilters = (query: any) => {
         // Data filters - use .in() for arrays (matches useFilteredSales applyFilters)
-        // Note: wmWeeks is applied separately in fetchAllPages, not here
         if (filters.wmDaysOfWeek.length > 0) {
           query = query.in('wm_day_of_week', filters.wmDaysOfWeek);
         }
@@ -166,16 +147,14 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       };
 
       /**
-       * TW: Use EXACT same logic as useFilteredSales:
-       * 1. Apply fiscal year boundary (gte fiscalYearStartStr)
-       * 2. Apply wmWeeks filter if any are selected (use full array)
+       * TW: Fetch data for selected WM Week(s).
+       * NO fiscal year boundary filter - the wmWeeks filter is sufficient.
        */
       const twRaw = await fetchAllPages(q => {
-        let query = q.gte('order_closed_date', fiscalYearStartStr);
         if (filters.wmWeeks.length > 0) {
-          query = query.in('wm_week', filters.wmWeeks);
+          return q.in('wm_week', filters.wmWeeks);
         }
-        return query;
+        return q;
       });
 
       // Calculate LW and TWLY only if we have TW data
