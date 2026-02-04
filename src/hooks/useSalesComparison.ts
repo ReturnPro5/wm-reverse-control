@@ -77,23 +77,30 @@ export function useSalesComparison(tabName: TabName = 'sales') {
        * CRITICAL: This function MUST match useFilteredSales EXACTLY.
        * Any deviation causes KPI cards and TW column to diverge.
        */
+      /**
+       * CRITICAL: This function MUST match useFilteredData.ts applyFilters() EXACTLY.
+       * Any deviation causes KPI cards and TW column to diverge.
+       * 
+       * Filters applied (in same order as useFilteredData.ts):
+       * 1. wmDaysOfWeek (wmWeeks applied separately in fetchAllPages)
+       * 2. programNames
+       * 3. facilities
+       * 4. categoryNames
+       * 5. tagClientOwnerships (was MISSING - now added)
+       * 6. tag_clientsource = 'WMUS' (always)
+       * 7. marketplacesSoldOn
+       * 8. orderTypesSoldOn
+       * 9. locationIds
+       * 10. Exclude transfers and $0 sales
+       */
       const applyAllFilters = (query: any) => {
-        // WMUS exclusive filter - always applied first
-        query = query.eq('tag_clientsource', 'WMUS');
-        
-        // Exclude transfers and $0 sales (matches useFilteredSales)
-        query = query.neq('marketplace_profile_sold_on', 'Transfer');
-        query = query.gt('sale_price', 0);
-        
         // Data filters - use .in() for arrays (matches useFilteredSales applyFilters)
+        // Note: wmWeeks is applied separately in fetchAllPages, not here
         if (filters.wmDaysOfWeek.length > 0) {
           query = query.in('wm_day_of_week', filters.wmDaysOfWeek);
         }
         if (filters.programNames.length > 0) {
           query = query.in('program_name', filters.programNames);
-        }
-        if (filters.masterProgramNames.length > 0) {
-          query = query.in('master_program_name', filters.masterProgramNames);
         }
         if (filters.facilities.length > 0) {
           query = query.in('facility', filters.facilities);
@@ -101,6 +108,11 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         if (filters.categoryNames.length > 0) {
           query = query.in('category_name', filters.categoryNames);
         }
+        if (filters.tagClientOwnerships.length > 0) {
+          query = query.in('tag_client_ownership', filters.tagClientOwnerships);
+        }
+        // WMUS exclusive - always filter to WMUS only
+        query = query.eq('tag_clientsource', 'WMUS');
         if (filters.marketplacesSoldOn.length > 0) {
           query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
         }
@@ -110,6 +122,10 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         if (filters.locationIds.length > 0) {
           query = query.in('location_id', filters.locationIds);
         }
+        
+        // Exclude transfers and $0 sales (matches useFilteredSales)
+        query = query.neq('marketplace_profile_sold_on', 'Transfer');
+        query = query.gt('sale_price', 0);
         
         return query;
       };
