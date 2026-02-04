@@ -302,9 +302,9 @@ export function useFilteredSales(tabName: TabName = 'sales') {
         // Exclude transfers and $0 sales for accurate unit counts
         query = query.neq('marketplace_profile_sold_on', 'Transfer');
         query = query.gt('sale_price', 0);
-        // NOTE: Fiscal year boundary filter REMOVED - it was incorrectly excluding
-        // January weeks (like WK52) that fall before the Feb 1 fiscal year start.
-        // The wmWeeks filter already ensures we get only the weeks we want.
+        // CRITICAL: ORDER BY is required for consistent pagination results
+        // Without it, the same row can appear in multiple pages or be skipped entirely
+        query = query.order('id', { ascending: true });
         query = query.range(from, from + pageSize - 1);
         
         const { data, error } = await query;
