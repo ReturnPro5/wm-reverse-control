@@ -2,40 +2,38 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTabFilters, TabName } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
-import { addWalmartChannel } from '@/lib/walmartChannel';
+import { addWalmartChannel, filterByWalmartChannel } from '@/lib/walmartChannel';
 import { SalesRecordWithChannel } from './useFilteredData';
 import { getWMFiscalYearStart } from '@/lib/wmWeek';
 
 /**
  * Hook to fetch sales data for TW, LW, and TWLY comparison.
  * 
- * - TW (This Week): The currently selected WM Week
- * - LW (Last Week): The week before TW (wmWeek - 1, or 52/53 if crossing year boundary)
- * - TWLY (This Week Last Year): Same week number but from records dated ~1 year ago
+ * CRITICAL: TW query MUST use IDENTICAL logic to useFilteredSales to ensure
+ * the TW column always matches the KPI cards exactly.
+ * 
+ * - TW (This Week): The currently selected WM Week(s) - matches KPI cards exactly
+ * - LW (Last Week): The week before (wmWeek - 1, or 52/53 if crossing year boundary)
+ * - TWLY (This Week Last Year): Entire previous fiscal year for true YoY comparison
  */
 export function useSalesComparison(tabName: TabName = 'sales') {
   const { filters } = useTabFilters(tabName);
 
   // Derive comparison weeks from selected wmWeeks
-  // If multiple weeks selected, use the highest one as "this week"
+  // If multiple weeks selected, use the highest one for LW calculation
   const selectedWeek = filters.wmWeeks.length > 0 ? Math.max(...filters.wmWeeks) : null;
   
   // LW: the week before. Handle wrap-around at year boundary.
-  // Week 1 -> LW is week 52 (or 53) from previous fiscal year
   const lastWeek = selectedWeek !== null 
     ? (selectedWeek === 1 ? 52 : selectedWeek - 1) 
     : null;
-  
-  // TWLY: Same week number, but we need to query by date range for the prior year
-  // Since wm_week resets each fiscal year, week 52 of this year and last year 
-  // both have wm_week = 52. We'll use the order_closed_date to distinguish.
-  const thisWeekLastYearNumber = selectedWeek;
 
   const filterKey = JSON.stringify({
-    selectedWeek,
+    wmWeeks: filters.wmWeeks, // Use full array, not just selectedWeek
+    wmDaysOfWeek: filters.wmDaysOfWeek,
     lastWeek,
-    thisWeekLastYearNumber,
     programNames: filters.programNames,
+    masterProgramNames: filters.masterProgramNames,
     facilities: filters.facilities,
     categoryNames: filters.categoryNames,
     tagClientOwnerships: filters.tagClientOwnerships,
@@ -75,18 +73,27 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       const fiscalYearStart = getWMFiscalYearStart(maxDataDate);
       const fiscalYearStartStr = formatDate(fiscalYearStart);
       
-      // Helper to build base query with all filters (matches useFilteredSales EXACTLY)
-      const buildBaseQuery = () => {
-        let query = supabase
-          .from('sales_metrics')
-          .select('*')
-          .eq('tag_clientsource', 'WMUS')
-          .neq('marketplace_profile_sold_on', 'Transfer')
-          .gt('sale_price', 0);
+      /**
+       * CRITICAL: This function MUST match useFilteredSales EXACTLY.
+       * Any deviation causes KPI cards and TW column to diverge.
+       */
+      const applyAllFilters = (query: any) => {
+        // WMUS exclusive filter - always applied first
+        query = query.eq('tag_clientsource', 'WMUS');
         
-        // Apply data filters
+        // Exclude transfers and $0 sales (matches useFilteredSales)
+        query = query.neq('marketplace_profile_sold_on', 'Transfer');
+        query = query.gt('sale_price', 0);
+        
+        // Data filters - use .in() for arrays (matches useFilteredSales applyFilters)
+        if (filters.wmDaysOfWeek.length > 0) {
+          query = query.in('wm_day_of_week', filters.wmDaysOfWeek);
+        }
         if (filters.programNames.length > 0) {
           query = query.in('program_name', filters.programNames);
+        }
+        if (filters.masterProgramNames.length > 0) {
+          query = query.in('master_program_name', filters.masterProgramNames);
         }
         if (filters.facilities.length > 0) {
           query = query.in('facility', filters.facilities);
@@ -100,20 +107,25 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         if (filters.orderTypesSoldOn.length > 0) {
           query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
         }
+        if (filters.locationIds.length > 0) {
+          query = query.in('location_id', filters.locationIds);
+        }
         
         return query;
       };
       
-      // Paginated fetch helper
+      // Paginated fetch helper with client-side filtering
       const fetchAllPages = async (
-        queryBuilder: (q: ReturnType<typeof buildBaseQuery>) => ReturnType<typeof buildBaseQuery>
+        additionalFilters: (q: any) => any
       ): Promise<Tables<'sales_metrics'>[]> => {
         const allData: Tables<'sales_metrics'>[] = [];
         let from = 0;
         const pageSize = 1000;
 
         while (true) {
-          let query = queryBuilder(buildBaseQuery());
+          let query = supabase.from('sales_metrics').select('*');
+          query = applyAllFilters(query);
+          query = additionalFilters(query);
           query = query.range(from, from + pageSize - 1);
 
           const { data, error } = await query;
@@ -125,7 +137,7 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           from += pageSize;
         }
 
-        // Filter excluded files and owned programs (client-side, matches useFilteredSales)
+        // Client-side filtering: excluded files and owned programs (matches useFilteredSales)
         let filtered = allData.filter(row => 
           !row.file_upload_id || !filters.excludedFileIds.includes(row.file_upload_id)
         );
@@ -137,7 +149,11 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         return filtered;
       };
 
-      // TW: Use EXACT same logic as useFilteredSales - apply wmWeeks filter and fiscal year boundary
+      /**
+       * TW: Use EXACT same logic as useFilteredSales:
+       * 1. Apply fiscal year boundary (gte fiscalYearStartStr)
+       * 2. Apply wmWeeks filter if any are selected (use full array)
+       */
       const twRaw = await fetchAllPages(q => {
         let query = q.gte('order_closed_date', fiscalYearStartStr);
         if (filters.wmWeeks.length > 0) {
@@ -151,7 +167,7 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       let twlyRaw: Tables<'sales_metrics'>[] = [];
 
       if (twRaw.length > 0) {
-        // Derive the week for LW calculation
+        // Derive the week for LW calculation from selected weeks or data
         const derivedWeek = selectedWeek ?? twRaw.reduce((max, r) => {
           const w = r.wm_week ?? 0;
           return w > max ? w : max;
@@ -196,20 +212,19 @@ export function useSalesComparison(tabName: TabName = 'sales') {
       }
 
       // Add walmart channel to each record
-      const tw = addWalmartChannel(twRaw);
-      const lw = addWalmartChannel(lwRaw);
-      const twly = addWalmartChannel(twlyRaw);
+      const twWithChannel = addWalmartChannel(twRaw);
+      const lwWithChannel = addWalmartChannel(lwRaw);
+      const twlyWithChannel = addWalmartChannel(twlyRaw);
 
-      // Apply walmart channel filter if set
-      const applyChannelFilter = (data: SalesRecordWithChannel[]) => {
-        if (filters.walmartChannels.length === 0) return data;
-        return data.filter(r => filters.walmartChannels.includes(r.walmartChannel));
-      };
+      // Apply walmart channel filter if set (matches useFilteredSales)
+      const tw = filterByWalmartChannel(twWithChannel, filters.walmartChannels);
+      const lw = filterByWalmartChannel(lwWithChannel, filters.walmartChannels);
+      const twly = filterByWalmartChannel(twlyWithChannel, filters.walmartChannels);
 
       return {
-        tw: applyChannelFilter(tw),
-        lw: applyChannelFilter(lw),
-        twly: applyChannelFilter(twly),
+        tw,
+        lw,
+        twly,
         selectedWeek,
         lastWeek,
       };
