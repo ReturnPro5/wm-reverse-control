@@ -123,6 +123,8 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           let query = supabase.from('sales_metrics').select('*');
           query = applyAllFilters(query);
           query = additionalFilters(query);
+          // CRITICAL: ORDER BY is required for consistent pagination results
+          query = query.order('id', { ascending: true });
           query = query.range(from, from + pageSize - 1);
 
           const { data, error } = await query;
