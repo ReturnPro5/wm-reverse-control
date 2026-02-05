@@ -423,8 +423,8 @@ export function useFileUpload(fileTypeOverride?: string) {
           });
         }
 
-        // Insert sales metrics for Sales files with retry
-        if (fileType === 'Sales') {
+        // Insert sales metrics for Sales and Monthly files with retry
+        if (fileType === 'Sales' || finalFileType === 'Monthly') {
           const salesRecords = batch
             .filter(unit => unit.orderClosedDate)
             .map(unit => ({

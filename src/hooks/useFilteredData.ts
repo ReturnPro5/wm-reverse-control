@@ -76,12 +76,16 @@ function filterExcludedFiles<T extends { file_upload_id?: string | null }>(
 }
 
 // Filter out "owned" programs from sales data (master_program_name contains "owned")
+// EXCEPTION: "Owned Special Projects (Finished)" is allowed through
 function filterOwnedPrograms<T extends { master_program_name?: string | null }>(
   data: T[]
 ): T[] {
   return data.filter(row => {
     const masterProgram = row.master_program_name?.toLowerCase() || '';
-    return !masterProgram.includes('owned');
+    if (!masterProgram.includes('owned')) return true;
+    // Allow "Owned Special Projects (Finished)" through
+    if (masterProgram.includes('owned special projects')) return true;
+    return false;
   });
 }
 
