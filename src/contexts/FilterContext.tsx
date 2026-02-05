@@ -28,7 +28,7 @@ export interface TabFilters {
   walmartChannels: WalmartChannel[];
 }
 
-export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv' | 'quarterly-review';
+export type TabName = 'inbound' | 'processing' | 'sales' | 'outbound' | 'marketplace' | 'dsv' | 'quarterly-review' | 'monthly';
 
 interface FilterContextType {
   getTabFilters: (tab: TabName) => TabFilters;
@@ -82,6 +82,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     marketplace: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
     dsv: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
     'quarterly-review': { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
+    monthly: { ...defaultTabFilters, excludedFileIds: globalExcludedFileIds },
   });
 
   const getTabFilters = useCallback((tab: TabName): TabFilters => {

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Download, 
@@ -8,9 +7,11 @@ import {
   Truck,
   Store,
   ShoppingCart,
-  CalendarRange
+  CalendarRange,
+  Calendar
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -22,6 +23,7 @@ const tabs = [
   { id: 'inbound', label: 'Inbound', icon: Download },
   { id: 'processing', label: 'Processing', icon: Settings },
   { id: 'sales', label: 'Sales', icon: DollarSign },
+  { id: 'monthly', label: 'Monthly', icon: Calendar },
   { id: 'outbound', label: 'Outbound/Fees', icon: Truck },
   { id: 'marketplace', label: 'WM Marketplace', icon: Store },
   { id: 'dsv', label: 'WM DSV', icon: ShoppingCart },
@@ -44,10 +46,11 @@ export function DashboardLayout({ children, activeTab, onTabChange }: DashboardL
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
               Sat-Fri Week Cycle
             </span>
+            <ThemeToggle />
           </div>
         </div>
       </header>
