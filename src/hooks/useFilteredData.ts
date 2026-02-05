@@ -291,6 +291,23 @@ export function useFilteredSales(tabName: TabName = 'sales') {
     queryKey: ['filtered-sales', tabName, filterKey],
     staleTime: 0, // Always refetch when filters change
     queryFn: async () => {
+      // Determine file type based on tab - Monthly tab uses 'Monthly' files, others use 'Sales'
+      const requiredFileType = tabName === 'monthly' ? 'Monthly' : 'Sales';
+      
+      // Get file IDs for the required file type
+      const { data: fileUploads, error: filesError } = await supabase
+        .from('file_uploads')
+        .select('id')
+        .eq('file_type', requiredFileType);
+      
+      if (filesError) throw filesError;
+      const validFileIds = fileUploads?.map(f => f.id) || [];
+      
+      // If no files of this type exist, return empty array
+      if (validFileIds.length === 0) {
+        return [];
+      }
+      
       // Fetch all records using pagination to bypass 1000 row limit
       const allData: Tables<'sales_metrics'>[] = [];
       let from = 0;
@@ -298,6 +315,8 @@ export function useFilteredSales(tabName: TabName = 'sales') {
       
       while (true) {
         let query = supabase.from('sales_metrics').select('*');
+        // Filter by file type
+        query = query.in('file_upload_id', validFileIds);
         query = applyFilters(query, filters);
         // Exclude transfers and $0 sales for accurate unit counts
         query = query.neq('marketplace_profile_sold_on', 'Transfer');
