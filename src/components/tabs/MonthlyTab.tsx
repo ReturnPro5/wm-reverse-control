@@ -1,6 +1,6 @@
 import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
-import { FileUploadZone } from '@/components/dashboard/FileUploadZone';
+import { MonthlyFileUploadZone } from '@/components/dashboard/MonthlyFileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, Receipt, Calendar } from 'lucide-react';
 import { 
@@ -413,10 +413,10 @@ export function MonthlyTab() {
       </div>
 
       {/* File Manager */}
-      <TabFileManager fileType="Sales" onFilesChanged={refetch} />
+      <TabFileManager fileType="Monthly" onFilesChanged={refetch} />
 
       {/* Upload Section */}
-      <FileUploadZone onUploadComplete={refetch} />
+      <MonthlyFileUploadZone onUploadComplete={refetch} />
     </div>
   );
 }
