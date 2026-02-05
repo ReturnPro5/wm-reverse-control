@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { InboundTab } from '@/components/tabs/InboundTab';
 import { ProcessingTab } from '@/components/tabs/ProcessingTab';
 import { SalesTab } from '@/components/tabs/SalesTab';
+import { MonthlyTab } from '@/components/tabs/MonthlyTab';
 import { OutboundTab } from '@/components/tabs/OutboundTab';
 import { MarketplaceTab } from '@/components/tabs/MarketplaceTab';
 import { DSVTab } from '@/components/tabs/DSVTab';
@@ -19,6 +20,8 @@ const Index = () => {
         return <ProcessingTab />;
       case 'sales':
         return <SalesTab />;
+      case 'monthly':
+        return <MonthlyTab />;
       case 'outbound':
         return <OutboundTab />;
       case 'marketplace':
