@@ -484,14 +484,21 @@ export function useFileUpload(fileTypeOverride?: string) {
         }
 
         // Run all table inserts for this batch in parallel
-        await Promise.all(insertPromises);
+        // Use allSettled so a lifecycle failure doesn't kill the sales insert
+        const results = await Promise.allSettled(insertPromises);
+        const failures = results.filter(r => r.status === 'rejected');
+        if (failures.length > 0) {
+          // If sales_metrics specifically failed, throw to trigger retry
+          const failMessages = failures.map((f: any) => f.reason?.message || 'unknown').join('; ');
+          throw new Error(`Batch insert partial failure: ${failMessages}`);
+        }
         
         processedBatches++;
       };
 
       // Execute batches with controlled concurrency using allSettled
       // so one failed batch doesn't kill sibling batches
-      const failedBatchIndices: number[] = [];
+      let failedBatchIndices: number[] = [];
       
       for (let i = 0; i < totalBatches; i += CONCURRENCY) {
         if (abortSignal.aborted) throw new Error('Upload cancelled');
@@ -518,7 +525,7 @@ export function useFileUpload(fileTypeOverride?: string) {
         const progress = 60 + ((processedBatches / totalBatches) * 35);
         const elapsedTime = (Date.now() - uploadStartTime.current) / 1000;
         const progressFraction = processedBatches / totalBatches;
-        const estimatedTotalTime = elapsedTime / progressFraction;
+        const estimatedTotalTime = progressFraction > 0 ? elapsedTime / progressFraction : 0;
         const estimatedTimeRemaining = Math.max(0, estimatedTotalTime - elapsedTime);
         
         setUploadProgress({ 
@@ -529,19 +536,28 @@ export function useFileUpload(fileTypeOverride?: string) {
         });
       }
 
-      // Retry failed batches one more time with longer delays
-      if (failedBatchIndices.length > 0) {
-        console.log(`Retrying ${failedBatchIndices.length} failed batches...`);
-        setUploadProgress({ stage: 'uploading', message: `Retrying ${failedBatchIndices.length} failed batches...`, progress: 95 });
+      // Retry failed batches with multiple rounds (up to 3 rounds)
+      // Process sequentially (concurrency=1) to reduce DB pressure
+      for (let retryRound = 1; retryRound <= 3 && failedBatchIndices.length > 0; retryRound++) {
+        console.log(`Retry round ${retryRound}: ${failedBatchIndices.length} failed batches...`);
+        setUploadProgress({ stage: 'uploading', message: `Retry round ${retryRound}: ${failedBatchIndices.length} batches...`, progress: 95 });
         
+        // Wait before retry round to let DB recover
+        await new Promise(resolve => setTimeout(resolve, 3000 * retryRound));
+        
+        const stillFailed: number[] = [];
         for (const batchIdx of failedBatchIndices) {
+          if (abortSignal.aborted) throw new Error('Upload cancelled');
           try {
             await processBatch(batchIdx);
-            failedBatchIndices.splice(failedBatchIndices.indexOf(batchIdx), 1);
           } catch (e: any) {
-            console.error(`Batch ${batchIdx} failed on final retry:`, e?.message);
+            console.error(`Batch ${batchIdx} failed on retry round ${retryRound}:`, e?.message);
+            stillFailed.push(batchIdx);
           }
+          // Small delay between sequential retries
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
+        failedBatchIndices = stillFailed;
       }
 
       // Mark file as processed
