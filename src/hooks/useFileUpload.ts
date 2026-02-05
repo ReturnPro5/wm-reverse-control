@@ -298,13 +298,13 @@ export function useFileUpload(fileTypeOverride?: string) {
       // Process units in parallel batches for maximum throughput
       // Larger batches = fewer round-trips; concurrency = parallel network I/O
       const batchSize = 500;
-      const CONCURRENCY = 5; // Number of parallel batch operations
+      const CONCURRENCY = 3; // Reduced from 5 to prevent connection pool exhaustion
       const totalBatches = Math.ceil(units.length / batchSize);
       let processedBatches = 0;
       
       console.log(`Processing ${units.length} units in ${totalBatches} batches of ${batchSize} (concurrency: ${CONCURRENCY})`);
       
-      const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 5) => {
+      const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 8) => {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
           if (abortSignal.aborted) throw new Error('Upload cancelled');
           try {
@@ -312,8 +312,11 @@ export function useFileUpload(fileTypeOverride?: string) {
           } catch (error: any) {
             if (error?.message === 'Upload cancelled') throw error;
             if (attempt === maxRetries - 1) throw error;
-            const delay = Math.pow(2, attempt) * 500;
-            console.warn(`Retry attempt ${attempt + 1} after ${delay}ms:`, error?.message);
+            // Longer backoff with jitter to avoid thundering herd
+            const baseDelay = Math.pow(2, attempt) * 800;
+            const jitter = Math.random() * 400;
+            const delay = baseDelay + jitter;
+            console.warn(`Retry attempt ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms:`, error?.message);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
@@ -397,7 +400,7 @@ export function useFileUpload(fileTypeOverride?: string) {
         if (lifecycleEvents.length > 0) {
           insertPromises.push(retryWithBackoff(async () => {
             const { error } = await supabase.from('lifecycle_events').insert(lifecycleEvents);
-            if (error) console.error('Lifecycle insert error:', error);
+            if (error) throw new Error(`Lifecycle insert failed: ${error.message}`);
           }));
         }
 
@@ -448,7 +451,7 @@ export function useFileUpload(fileTypeOverride?: string) {
               const { error } = await supabase
                 .from('sales_metrics')
                 .upsert(salesRecords, { onConflict: 'trgid' });
-              if (error) console.error('Sales insert error:', error);
+              if (error) throw new Error(`Sales insert failed: ${error.message}`);
             }));
           }
         }
@@ -475,7 +478,7 @@ export function useFileUpload(fileTypeOverride?: string) {
               const { error } = await supabase
                 .from('fee_metrics')
                 .upsert(feeRecords, { onConflict: 'trgid' });
-              if (error) console.error('Fee insert error:', error);
+              if (error) throw new Error(`Fee insert failed: ${error.message}`);
             }));
           }
         }
