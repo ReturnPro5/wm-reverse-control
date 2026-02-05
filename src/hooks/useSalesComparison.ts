@@ -142,7 +142,10 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         );
         filtered = filtered.filter(row => {
           const masterProgram = row.master_program_name?.toLowerCase() || '';
-          return !masterProgram.includes('owned');
+          if (!masterProgram.includes('owned')) return true;
+          // Allow "Owned Special Projects (Finished)" through
+          if (masterProgram.includes('owned special projects')) return true;
+          return false;
         });
 
         return filtered;
