@@ -489,16 +489,30 @@ export function useFileUpload(fileTypeOverride?: string) {
         processedBatches++;
       };
 
-      // Execute batches with controlled concurrency
+      // Execute batches with controlled concurrency using allSettled
+      // so one failed batch doesn't kill sibling batches
+      const failedBatchIndices: number[] = [];
+      
       for (let i = 0; i < totalBatches; i += CONCURRENCY) {
         if (abortSignal.aborted) throw new Error('Upload cancelled');
         
-        const concurrentBatches = [];
+        const batchIndices: number[] = [];
+        const concurrentBatches: Promise<void>[] = [];
         for (let j = i; j < Math.min(i + CONCURRENCY, totalBatches); j++) {
+          batchIndices.push(j);
           concurrentBatches.push(processBatch(j));
         }
         
-        await Promise.all(concurrentBatches);
+        const results = await Promise.allSettled(concurrentBatches);
+        
+        // Track which batches failed
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            const batchIdx = batchIndices[idx];
+            console.error(`Batch ${batchIdx} failed permanently:`, result.reason?.message || result.reason);
+            failedBatchIndices.push(batchIdx);
+          }
+        });
 
         // Update progress
         const progress = 60 + ((processedBatches / totalBatches) * 35);
@@ -515,18 +529,62 @@ export function useFileUpload(fileTypeOverride?: string) {
         });
       }
 
+      // Retry failed batches one more time with longer delays
+      if (failedBatchIndices.length > 0) {
+        console.log(`Retrying ${failedBatchIndices.length} failed batches...`);
+        setUploadProgress({ stage: 'uploading', message: `Retrying ${failedBatchIndices.length} failed batches...`, progress: 95 });
+        
+        for (const batchIdx of failedBatchIndices) {
+          try {
+            await processBatch(batchIdx);
+            failedBatchIndices.splice(failedBatchIndices.indexOf(batchIdx), 1);
+          } catch (e: any) {
+            console.error(`Batch ${batchIdx} failed on final retry:`, e?.message);
+          }
+        }
+      }
+
       // Mark file as processed
       await supabase
         .from('file_uploads')
         .update({ processed: true })
         .eq('id', fileUpload.id);
 
-      setUploadProgress({ stage: 'complete', message: 'Upload complete!', progress: 100 });
-
-      toast({
-        title: 'Success',
-        description: `Uploaded ${units.length} units from ${file.name}`,
-      });
+      // Post-upload verification: compare expected vs actual rows in sales_metrics
+      if (fileType === 'Sales' || finalFileType === 'Monthly') {
+        const { count: actualSalesRows } = await supabase
+          .from('sales_metrics')
+          .select('*', { count: 'exact', head: true })
+          .eq('file_upload_id', fileUpload.id);
+        
+        const expectedSalesRows = units.filter(u => u.orderClosedDate).length;
+        const rowDiff = expectedSalesRows - (actualSalesRows || 0);
+        
+        console.log(`Post-upload verification: expected=${expectedSalesRows}, actual=${actualSalesRows}, diff=${rowDiff}`);
+        
+        if (rowDiff > 0) {
+          const pctMissing = ((rowDiff / expectedSalesRows) * 100).toFixed(1);
+          toast({
+            title: '⚠️ Partial Upload Warning',
+            description: `${actualSalesRows?.toLocaleString()} of ${expectedSalesRows.toLocaleString()} sales rows saved (${pctMissing}% missing). ${failedBatchIndices.length} batches failed. Consider re-uploading.`,
+            variant: 'destructive',
+          });
+          
+          setUploadProgress({ stage: 'complete', message: `Upload complete with warnings: ${rowDiff.toLocaleString()} rows missing`, progress: 100 });
+        } else {
+          setUploadProgress({ stage: 'complete', message: 'Upload complete!', progress: 100 });
+          toast({
+            title: 'Success',
+            description: `Uploaded ${units.length.toLocaleString()} units from ${file.name} — all rows verified ✓`,
+          });
+        }
+      } else {
+        setUploadProgress({ stage: 'complete', message: 'Upload complete!', progress: 100 });
+        toast({
+          title: 'Success',
+          description: `Uploaded ${units.length} units from ${file.name}`,
+        });
+      }
 
       return { success: true, unitsCount: units.length, fileType };
     } catch (error) {
