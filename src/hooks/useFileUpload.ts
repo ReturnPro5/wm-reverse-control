@@ -295,54 +295,37 @@ export function useFileUpload(fileTypeOverride?: string) {
 
       if (fileError) throw fileError;
 
-      // Process units in smaller batches for large files with retry logic
-      // Use even smaller batches for very large files to prevent timeouts
-      const batchSize = units.length > 100000 ? 25 : units.length > 50000 ? 50 : 100;
+      // Process units in parallel batches for maximum throughput
+      // Larger batches = fewer round-trips; concurrency = parallel network I/O
+      const batchSize = 500;
+      const CONCURRENCY = 5; // Number of parallel batch operations
       const totalBatches = Math.ceil(units.length / batchSize);
       let processedBatches = 0;
       
-      console.log(`Processing ${units.length} units in ${totalBatches} batches of ${batchSize}`);
+      console.log(`Processing ${units.length} units in ${totalBatches} batches of ${batchSize} (concurrency: ${CONCURRENCY})`);
       
       const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 5) => {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-          // Check for abort
           if (abortSignal.aborted) throw new Error('Upload cancelled');
-          
           try {
             return await fn();
           } catch (error: any) {
             if (error?.message === 'Upload cancelled') throw error;
             if (attempt === maxRetries - 1) throw error;
-            const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s, 16s
+            const delay = Math.pow(2, attempt) * 500;
             console.warn(`Retry attempt ${attempt + 1} after ${delay}ms:`, error?.message);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
       };
-      
-      for (let i = 0; i < units.length; i += batchSize) {
-        // Check for abort at start of each batch
-        if (abortSignal.aborted) throw new Error('Upload cancelled');
-        
-        const batch = units.slice(i, i + batchSize);
-        const progress = 60 + ((i / units.length) * 35);
-        
-        // Calculate estimated time remaining
-        const elapsedTime = (Date.now() - uploadStartTime.current) / 1000;
-        const progressFraction = (processedBatches + 1) / totalBatches;
-        const estimatedTotalTime = elapsedTime / progressFraction;
-        const estimatedTimeRemaining = Math.max(0, estimatedTotalTime - elapsedTime);
-        
-        setUploadProgress({ 
-          stage: 'uploading', 
-          message: `Batch ${processedBatches + 1}/${totalBatches} (${i + 1}-${Math.min(i + batchSize, units.length)} of ${units.length})`, 
-          progress,
-          estimatedTimeRemaining: processedBatches > 0 ? estimatedTimeRemaining : undefined
-        });
 
-        // Upsert to units_canonical with retry
-        // IMPORTANT: SLA files should NOT overwrite existing units - they only provide SLA metrics
-        // For SLA files, we INSERT with conflict handling to avoid overwriting Inbound data
+      // Process a single batch: insert into all relevant tables in parallel
+      const processBatch = async (batchIndex: number) => {
+        const start = batchIndex * batchSize;
+        const batch = units.slice(start, start + batchSize);
+        if (batch.length === 0) return;
+        if (abortSignal.aborted) throw new Error('Upload cancelled');
+
         const canonicalRecords = batch.map(unit => ({
           trgid: unit.trgid,
           file_upload_id: fileUpload.id,
@@ -369,26 +352,25 @@ export function useFileUpload(fileTypeOverride?: string) {
           wm_day_of_week: unit.wmDayOfWeek,
         }));
 
-        await retryWithBackoff(async () => {
+        // Build all table inserts as parallel promises
+        const insertPromises: Promise<void>[] = [];
+
+        // 1. Units canonical
+        insertPromises.push(retryWithBackoff(async () => {
           if (finalFileType === 'SLA') {
-            // For SLA files: Insert only NEW records, skip existing ones (don't overwrite Inbound data)
-            const { error: canonicalError } = await supabase
+            const { error } = await supabase
               .from('units_canonical')
-              .upsert(canonicalRecords, { 
-                onConflict: 'trgid',
-                ignoreDuplicates: true // This prevents overwriting existing records
-              });
-            if (canonicalError) throw canonicalError;
+              .upsert(canonicalRecords, { onConflict: 'trgid', ignoreDuplicates: true });
+            if (error) throw error;
           } else {
-            // For other file types: Normal upsert behavior
-            const { error: canonicalError } = await supabase
+            const { error } = await supabase
               .from('units_canonical')
               .upsert(canonicalRecords, { onConflict: 'trgid' });
-            if (canonicalError) throw canonicalError;
+            if (error) throw error;
           }
-        });
+        }));
 
-        // Insert lifecycle events with retry
+        // 2. Lifecycle events
         const lifecycleEvents: any[] = [];
         for (const unit of batch) {
           const stages = [
@@ -398,7 +380,6 @@ export function useFileUpload(fileTypeOverride?: string) {
             { stage: 'Listed', date: unit.firstListedDate },
             { stage: 'Sold', date: unit.orderClosedDate },
           ];
-
           for (const { stage, date } of stages) {
             if (date) {
               lifecycleEvents.push({
@@ -413,17 +394,14 @@ export function useFileUpload(fileTypeOverride?: string) {
             }
           }
         }
-
         if (lifecycleEvents.length > 0) {
-          await retryWithBackoff(async () => {
-            const { error: lifecycleError } = await supabase
-              .from('lifecycle_events')
-              .insert(lifecycleEvents);
-            if (lifecycleError) console.error('Lifecycle insert error:', lifecycleError);
-          });
+          insertPromises.push(retryWithBackoff(async () => {
+            const { error } = await supabase.from('lifecycle_events').insert(lifecycleEvents);
+            if (error) console.error('Lifecycle insert error:', error);
+          }));
         }
 
-        // Insert sales metrics for Sales and Monthly files with retry
+        // 3. Sales metrics (for Sales & Monthly files)
         if (fileType === 'Sales' || finalFileType === 'Monthly') {
           const salesRecords = batch
             .filter(unit => unit.orderClosedDate)
@@ -465,18 +443,17 @@ export function useFileUpload(fileTypeOverride?: string) {
               order_type_sold_on: unit.orderTypeSoldOn || null,
               title: unit.title || null,
             }));
-
           if (salesRecords.length > 0) {
-            await retryWithBackoff(async () => {
-              const { error: salesError } = await supabase
+            insertPromises.push(retryWithBackoff(async () => {
+              const { error } = await supabase
                 .from('sales_metrics')
                 .upsert(salesRecords, { onConflict: 'trgid' });
-              if (salesError) console.error('Sales insert error:', salesError);
-            });
+              if (error) console.error('Sales insert error:', error);
+            }));
           }
         }
 
-        // Insert fee metrics for Outbound files with retry
+        // 4. Fee metrics (for Outbound files)
         if (fileType === 'Outbound') {
           const feeRecords = batch
             .filter(unit => unit.totalFees !== null)
@@ -493,25 +470,46 @@ export function useFileUpload(fileTypeOverride?: string) {
               facility: unit.facility,
               wm_week: unit.wmWeek,
             }));
-
           if (feeRecords.length > 0) {
-            await retryWithBackoff(async () => {
-              const { error: feeError } = await supabase
+            insertPromises.push(retryWithBackoff(async () => {
+              const { error } = await supabase
                 .from('fee_metrics')
                 .upsert(feeRecords, { onConflict: 'trgid' });
-              if (feeError) console.error('Fee insert error:', feeError);
-            });
+              if (error) console.error('Fee insert error:', error);
+            }));
           }
         }
+
+        // Run all table inserts for this batch in parallel
+        await Promise.all(insertPromises);
         
         processedBatches++;
+      };
+
+      // Execute batches with controlled concurrency
+      for (let i = 0; i < totalBatches; i += CONCURRENCY) {
+        if (abortSignal.aborted) throw new Error('Upload cancelled');
         
-        // Yield to browser MORE FREQUENTLY for large files to prevent freezing
-        // Every 5 batches for large files, every 10 for smaller
-        const yieldFrequency = units.length > 100000 ? 5 : 10;
-        if (processedBatches % yieldFrequency === 0) {
-          await new Promise(resolve => setTimeout(resolve, 10));
+        const concurrentBatches = [];
+        for (let j = i; j < Math.min(i + CONCURRENCY, totalBatches); j++) {
+          concurrentBatches.push(processBatch(j));
         }
+        
+        await Promise.all(concurrentBatches);
+
+        // Update progress
+        const progress = 60 + ((processedBatches / totalBatches) * 35);
+        const elapsedTime = (Date.now() - uploadStartTime.current) / 1000;
+        const progressFraction = processedBatches / totalBatches;
+        const estimatedTotalTime = elapsedTime / progressFraction;
+        const estimatedTimeRemaining = Math.max(0, estimatedTotalTime - elapsedTime);
+        
+        setUploadProgress({ 
+          stage: 'uploading', 
+          message: `${processedBatches}/${totalBatches} batches (${Math.min(processedBatches * batchSize, units.length).toLocaleString()} of ${units.length.toLocaleString()} rows)`, 
+          progress,
+          estimatedTimeRemaining: processedBatches > 2 ? estimatedTimeRemaining : undefined
+        });
       }
 
       // Mark file as processed
