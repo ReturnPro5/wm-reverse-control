@@ -352,7 +352,21 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                        return p?.label || '';
                      }}
                    />
-                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} />
+                   <Legend
+                     content={() => {
+                       const channels = Array.from(new Set(crossBuckets.map(b => b.channel)));
+                       return (
+                         <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '12px', paddingTop: 6, fontSize: 12 }}>
+                           {channels.map((ch, i) => (
+                             <span key={ch} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                               <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: getMarketplaceColor(ch, i), display: 'inline-block' }} />
+                               {ch}
+                             </span>
+                           ))}
+                         </div>
+                       );
+                     }}
+                   />
                   <Scatter name="Channel × Facility" data={crossBuckets} isAnimationActive={false}>
                     {crossBuckets.map((entry, index) => (
                       <Cell key={entry.label} fill={getMarketplaceColor(entry.channel, index)} />
