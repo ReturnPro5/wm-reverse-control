@@ -318,9 +318,9 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} Avg Sale Price vs Units</h3>
           {crossBuckets.length > 0 ? (
-            <div className="h-[420px]">
+            <div className="h-[520px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 30, bottom: 55, left: 40 }}>
+                <ScatterChart margin={{ top: 20, right: 50, bottom: 55, left: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis
                     type="number"
@@ -335,7 +335,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     dataKey="avgSalePrice"
                     name="Avg Price"
                     tickFormatter={(v: number) => `$${Math.round(v)}`}
-                    label={{ value: 'Avg Sale Price', angle: -90, position: 'insideLeft', offset: -20, fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 }}
+                    label={{ value: 'Avg Sale Price', angle: -90, position: 'insideLeft', offset: -25, fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 }}
                     tick={{ fill: 'hsl(var(--foreground))', fontSize: 13 }}
                   />
                   <ZAxis type="number" dataKey="sales" range={[200, 2000]} name="Sales" />
@@ -362,21 +362,31 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                         if (typeof idx !== 'number' || idx >= 5) return null;
                         const entry = crossBuckets[idx];
                         if (!entry) return null;
-                        // Stagger angles to avoid overlap: alternate between -35° and -50°
-                        const angles = [-30, -45, -25, -50, -35];
-                        const angle = angles[idx % angles.length];
-                        const offsetX = 14;
-                        const offsetY = -14;
+                        const px = Number(x);
+                        const py = Number(y);
+                        // Place labels in a neat right-side column, evenly spaced vertically
+                        // Use consistent X position near right margin, stagger Y
+                        const labelX = px;
+                        const labelY = 30 + idx * 34;
+                        // Anchor text to the left if dot is in right half, else to the right
+                        const textAnchor = px > 400 ? 'end' : 'start';
+                        const adjustedLabelX = px > 400 ? labelX - 14 : labelX + 14;
                         return (
-                          <g transform={`translate(${Number(x) + offsetX}, ${Number(y) + offsetY})`}>
-                            <g transform={`rotate(${angle})`}>
-                              <text x={0} y={0} fill="hsl(var(--foreground))" fontSize={14} fontWeight={700} dominantBaseline="auto">
-                                {entry.channel} @ {entry.facility}
-                              </text>
-                              <text x={0} y={16} fill="hsl(var(--muted-foreground))" fontSize={13} fontWeight={500} dominantBaseline="auto">
-                                {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
-                              </text>
-                            </g>
+                          <g>
+                            <line
+                              x1={px} y1={py - 8}
+                              x2={adjustedLabelX + (px > 400 ? 30 : -10)} y2={labelY + 10}
+                              stroke="hsl(var(--muted-foreground))"
+                              strokeWidth={1}
+                              strokeDasharray="4 2"
+                              opacity={0.35}
+                            />
+                            <text x={adjustedLabelX} y={labelY} textAnchor={textAnchor} fill="hsl(var(--foreground))" fontSize={14} fontWeight={700}>
+                              {entry.channel} · {entry.facility}
+                            </text>
+                            <text x={adjustedLabelX} y={labelY + 15} textAnchor={textAnchor} fill="hsl(var(--muted-foreground))" fontSize={12} fontWeight={500}>
+                              {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
+                            </text>
                           </g>
                         );
                       }}
@@ -386,7 +396,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[420px] flex items-center justify-center text-muted-foreground">No data available.</div>
+            <div className="h-[520px] flex items-center justify-center text-muted-foreground">No data available.</div>
           )}
         </div>
       </div>
