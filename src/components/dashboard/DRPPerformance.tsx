@@ -329,7 +329,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                      strokeDasharray="6 4"
                      strokeWidth={1.5}
                      strokeOpacity={0.7}
-                     label={{ value: `ASP ${formatFullDollar(weightedAvgASP)}`, position: 'left', fill: 'hsl(var(--foreground))', fontSize: 12, fontWeight: 600 }}
+                     label={{ value: `ASP ${formatFullDollar(weightedAvgASP)}`, position: 'right', fill: 'hsl(var(--foreground))', fontSize: 12, fontWeight: 600 }}
                    />
                   <XAxis
                     type="number"
