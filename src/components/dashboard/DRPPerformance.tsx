@@ -339,19 +339,20 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     tick={{ fill: 'hsl(var(--foreground))', fontSize: 13 }}
                   />
                   <ZAxis type="number" dataKey="sales" range={[200, 2000]} name="Sales" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 14 }}
-                    formatter={(value: number, name: string) => {
-                      if (name === 'Units') return [value.toLocaleString(), name];
-                      if (name === 'Avg Price') return [formatFullDollar(value), name];
-                      if (name === 'Sales') return [formatCurrency(value), 'Total Sales'];
-                      return [value, name];
-                    }}
-                    labelFormatter={(_, payload) => {
-                      const p = payload?.[0]?.payload;
-                      return p?.label || '';
-                    }}
-                  />
+                   <Tooltip
+                     contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 14 }}
+                     formatter={(value: number, name: string) => {
+                       if (name === 'Units') return [value.toLocaleString(), name];
+                       if (name === 'Avg Price') return [formatFullDollar(value), name];
+                       if (name === 'Sales') return [formatCurrency(value), 'Total Sales'];
+                       return [value, name];
+                     }}
+                     labelFormatter={(_, payload) => {
+                       const p = payload?.[0]?.payload;
+                       return p?.label || '';
+                     }}
+                   />
+                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} />
                   <Scatter name="Channel × Facility" data={crossBuckets} isAnimationActive={false}>
                     {crossBuckets.map((entry, index) => (
                       <Cell key={entry.label} fill={getMarketplaceColor(entry.channel, index)} />
