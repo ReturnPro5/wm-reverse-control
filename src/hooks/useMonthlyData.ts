@@ -20,7 +20,7 @@ interface MonthlyKPIs {
 }
 
 interface MonthlyChartRow {
-  month: string;
+  wm_week: number;
   marketplace: string;
   gross_sales: number;
   effective_retail: number;
