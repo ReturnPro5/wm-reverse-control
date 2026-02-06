@@ -44,18 +44,18 @@ export const mapMarketplace = (sale: SaleRecord): string => {
 
 // Standard marketplace colors for consistent theming
 export const marketplaceColors: Record<string, string> = {
-  'eBay': 'hsl(45, 93%, 47%)',
-  'eBay Auction': 'hsl(45, 80%, 35%)',
-  'DirectLiquidation': 'hsl(200, 70%, 50%)',
-  'WhatNot': 'hsl(280, 87%, 65%)',
-  'VIPOutlet': 'hsl(142, 76%, 36%)',
-  'Local Pickup': 'hsl(320, 70%, 50%)',
-  'Manual Sales': 'hsl(0, 0%, 50%)',
-  'Walmart Marketplace': 'hsl(207, 90%, 54%)',
-  'Walmart DSV': 'hsl(207, 70%, 40%)',
-  'Walmart In Store': 'hsl(207, 50%, 60%)',
-  'goWholesale': 'hsl(170, 70%, 45%)',
-  'Amazon': 'hsl(27, 98%, 54%)',
+  'Walmart Marketplace': 'hsl(211, 100%, 43%)',
+  'Walmart DSV': 'hsl(211, 80%, 32%)',
+  'Walmart In Store': 'hsl(211, 60%, 55%)',
+  'eBay': 'hsl(45, 100%, 44%)',
+  'eBay Auction': 'hsl(38, 90%, 38%)',
+  'DirectLiquidation': 'hsl(198, 70%, 45%)',
+  'WhatNot': 'hsl(168, 55%, 42%)',
+  'VIPOutlet': 'hsl(142, 50%, 40%)',
+  'Local Pickup': 'hsl(220, 15%, 55%)',
+  'Manual Sales': 'hsl(220, 10%, 65%)',
+  'goWholesale': 'hsl(180, 45%, 40%)',
+  'Amazon': 'hsl(25, 85%, 50%)',
 };
 
 export const getMarketplaceColor = (marketplace: string, index: number): string => {
