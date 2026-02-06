@@ -24,14 +24,21 @@ const formatCurrency = (value: number) => {
 const RADIAN = Math.PI / 180;
 
 function renderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent, name, value }: any) {
-  if (percent < 0.03) return null;
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  if (percent < 0.02) return null;
+  // Place label outside the pie for readability
+  const outerLabelRadius = outerRadius + 28;
+  const x = cx + outerLabelRadius * Math.cos(-midAngle * RADIAN);
+  const y = cy + outerLabelRadius * Math.sin(-midAngle * RADIAN);
+  const anchor = x > cx ? 'start' : 'end';
   return (
-    <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={700} style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
-      {`${(percent * 100).toFixed(1)}%`}
-    </text>
+    <g>
+      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={13} fontWeight={600}>
+        {name}
+      </text>
+      <text x={x} y={y + 16} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={12}>
+        {`${formatCurrency(value)} · ${(percent * 100).toFixed(1)}%`}
+      </text>
+    </g>
   );
 }
 
@@ -83,21 +90,23 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
       {isLoading ? (
         <div className="h-[400px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
       ) : pieData.length > 0 ? (
-        <div className="h-[400px]">
+        <div className="h-[550px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={pieData}
                 cx="50%"
-                cy="50%"
-                outerRadius={140}
+                cy="45%"
+                outerRadius={170}
+                innerRadius={60}
                 dataKey="value"
                 label={renderCustomLabel}
-                labelLine={false}
+                labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
                 isAnimationActive={false}
+                paddingAngle={2}
               >
                 {pieData.map((entry, index) => (
-                  <Cell key={entry.name} fill={getMarketplaceColor(entry.name, index)} />
+                  <Cell key={entry.name} fill={getMarketplaceColor(entry.name, index)} stroke="hsl(var(--background))" strokeWidth={2} />
                 ))}
               </Pie>
               <Tooltip
@@ -105,18 +114,20 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
                   backgroundColor: 'hsl(var(--card))',
                   border: '1px solid hsl(var(--border))',
                   borderRadius: '8px',
+                  fontSize: 13,
                 }}
                 formatter={(value: number, name: string) => {
                   const pct = grandTotal > 0 ? ((value / grandTotal) * 100).toFixed(1) : '0.0';
                   return [`${formatCurrency(value)} (${pct}%)`, name];
                 }}
               />
-              <Legend
-                formatter={(value: string) => value}
-                wrapperStyle={{ fontSize: 12 }}
-              />
             </PieChart>
           </ResponsiveContainer>
+          {/* Grand total in center text */}
+          <div className="text-center -mt-[310px] pointer-events-none">
+            <p className="text-sm text-muted-foreground">Total</p>
+            <p className="text-xl font-bold">{formatCurrency(grandTotal)}</p>
+          </div>
         </div>
       ) : (
         <div className="h-[400px] flex items-center justify-center text-muted-foreground">
