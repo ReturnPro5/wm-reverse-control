@@ -318,9 +318,9 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} Avg Sale Price vs Units</h3>
           {crossBuckets.length > 0 ? (
-            <div className="h-[520px]">
+            <div className="h-[580px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 60, right: 50, bottom: 55, left: 50 }}>
+                <ScatterChart margin={{ top: 100, right: 80, bottom: 55, left: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis
                     type="number"
@@ -364,16 +364,30 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                         if (!entry) return null;
                         const px = Number(x);
                         const py = Number(y);
-                        const angle = -35;
+                        // Stagger vertical offset so labels don't overlap each other
+                        const baseOffset = 30 + idx * 45;
+                        const labelEndX = px + baseOffset * Math.cos(Math.PI / 4);
+                        const labelEndY = py - baseOffset * Math.sin(Math.PI / 4);
                         return (
-                          <g transform={`translate(${px}, ${py - 18})`}>
-                            <g transform={`rotate(${angle})`}>
-                              <text x={0} y={0} textAnchor="start" fill="hsl(var(--foreground))" fontSize={14} fontWeight={700} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={3} strokeLinejoin="round">
-                                {entry.channel} · {entry.facility}
-                              </text>
-                              <text x={0} y={16} textAnchor="start" fill="hsl(var(--muted-foreground))" fontSize={12} fontWeight={500} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={3} strokeLinejoin="round">
-                                {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
-                              </text>
+                          <g>
+                            {/* Connector line from bubble to label */}
+                            <line
+                              x1={px} y1={py - 10}
+                              x2={labelEndX} y2={labelEndY + 8}
+                              stroke="hsl(var(--muted-foreground))"
+                              strokeWidth={1.5}
+                              strokeDasharray="4 3"
+                              opacity={0.5}
+                            />
+                            <g transform={`translate(${labelEndX}, ${labelEndY})`}>
+                              <g transform="rotate(-45)">
+                                <text x={0} y={0} textAnchor="start" fill="hsl(var(--foreground))" fontSize={14} fontWeight={700} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={4} strokeLinejoin="round">
+                                  {entry.channel} · {entry.facility}
+                                </text>
+                                <text x={0} y={16} textAnchor="start" fill="hsl(var(--muted-foreground))" fontSize={12} fontWeight={500} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={4} strokeLinejoin="round">
+                                  {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
+                                </text>
+                              </g>
                             </g>
                           </g>
                         );
@@ -384,7 +398,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[520px] flex items-center justify-center text-muted-foreground">No data available.</div>
+            <div className="h-[580px] flex items-center justify-center text-muted-foreground">No data available.</div>
           )}
         </div>
       </div>
