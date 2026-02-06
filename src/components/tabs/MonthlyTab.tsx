@@ -16,8 +16,7 @@ import {
   LabelList
 } from 'recharts';
 
-import { useFilterOptions } from '@/hooks/useFilteredData';
-import { useMonthlyKPIs, useMonthlyChartData } from '@/hooks/useMonthlyData';
+import { useFilterOptions, useFilteredSales } from '@/hooks/useFilteredData';
 import { mapMarketplace, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 const TAB_NAME = 'monthly' as const;
@@ -30,48 +29,49 @@ const formatCurrency = (value: number) => {
 
 export function MonthlyTab() {
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
-  const { data: kpis, isLoading: kpisLoading, refetch: refetchKPIs } = useMonthlyKPIs();
-  const { data: rawChartData, isLoading: chartLoading, refetch: refetchChart } = useMonthlyChartData();
+  const { data: salesData, isLoading: salesLoading, refetch: refetchSales } = useFilteredSales(TAB_NAME);
 
   const refetch = () => {
     refetchOptions();
-    refetchKPIs();
-    refetchChart();
+    refetchSales();
   };
 
-  // KPI values from server
-  const grossSales = kpis?.gross_sales || 0;
-  const effectiveRetail = kpis?.effective_retail || 0;
-  const unitsCount = kpis?.units_count || 0;
+  // Derive KPIs from filtered sales data
+  const grossSales = salesData?.reduce((sum, r) => sum + (r.gross_sale || 0), 0) ?? 0;
+  const effectiveRetail = salesData?.reduce((sum, r) => sum + (r.effective_retail || 0), 0) ?? 0;
+  const unitsCount = salesData?.length ?? 0;
   const recoveryRate = effectiveRetail > 0 ? (grossSales / effectiveRetail) * 100 : 0;
-  const refundTotal = kpis?.refund_total || 0;
+  const refundTotal = salesData?.reduce((sum, r) => sum + (r.refund_amount || 0), 0) ?? 0;
 
-  // Fee totals from server
-  const checkInFeeTotal = kpis?.invoiced_check_in_fee || 0;
-  const refurbFeeTotal = kpis?.invoiced_refurb_fee || 0;
-  const overboxFeeTotal = kpis?.invoiced_overbox_fee || 0;
-  const packagingFeeTotal = kpis?.invoiced_packaging_fee || 0;
-  const ppsFeeTotal = kpis?.invoiced_pps_fee || 0;
-  const shippingFeeTotal = kpis?.invoiced_shipping_fee || 0;
-  const merchantFeeTotal = kpis?.invoiced_merchant_fee || 0;
-  const revshareFeeTotal = kpis?.invoiced_revshare_fee || 0;
-  const threePMPFeeTotal = kpis?.invoiced_3pmp_fee || 0;
-  const marketingFeeTotal = kpis?.invoiced_marketing_fee || 0;
-  const refundFeeTotal = kpis?.invoiced_refund_fee || 0;
+  // Fee totals from filtered data
+  const checkInFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_check_in_fee || 0), 0) ?? 0;
+  const refurbFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_refurb_fee || 0), 0) ?? 0;
+  const overboxFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_overbox_fee || 0), 0) ?? 0;
+  const packagingFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_packaging_fee || 0), 0) ?? 0;
+  const ppsFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_pps_fee || 0), 0) ?? 0;
+  const shippingFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_shipping_fee || 0), 0) ?? 0;
+  const merchantFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_merchant_fee || 0), 0) ?? 0;
+  const revshareFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_revshare_fee || 0), 0) ?? 0;
+  const threePMPFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_3pmp_fee || 0), 0) ?? 0;
+  const marketingFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_marketing_fee || 0), 0) ?? 0;
+  const refundFeeTotal = salesData?.reduce((sum, r) => sum + (r.invoiced_refund_fee || 0), 0) ?? 0;
 
-  // Process chart data from server aggregation (grouped by WM Week)
+  const kpisLoading = salesLoading;
+  const chartLoading = salesLoading;
+
+  // Process chart data from filtered sales (grouped by WM Week + marketplace)
   const weeklyData: Record<number, { wmWeek: number; grossSales: number; effectiveRetail: number; marketplaces: Record<string, number>; sortDate: string }> = {};
-  (rawChartData || []).forEach(row => {
-    const marketplace = mapMarketplace({ marketplace_profile_sold_on: row.marketplace || null });
-    const wk = row.wm_week;
+  (salesData || []).forEach(row => {
+    const marketplace = mapMarketplace({ marketplace_profile_sold_on: row.marketplace_profile_sold_on ?? null });
+    const wk = row.wm_week ?? 0;
     if (!weeklyData[wk]) {
-      weeklyData[wk] = { wmWeek: wk, grossSales: 0, effectiveRetail: 0, marketplaces: {}, sortDate: row.sort_date || '' };
+      weeklyData[wk] = { wmWeek: wk, grossSales: 0, effectiveRetail: 0, marketplaces: {}, sortDate: row.order_closed_date || '' };
     }
-    weeklyData[wk].grossSales += Number(row.gross_sales) || 0;
-    weeklyData[wk].effectiveRetail += Number(row.effective_retail) || 0;
-    weeklyData[wk].marketplaces[marketplace] = (weeklyData[wk].marketplaces[marketplace] || 0) + (Number(row.gross_sales) || 0);
-    if (row.sort_date && row.sort_date < weeklyData[wk].sortDate) {
-      weeklyData[wk].sortDate = row.sort_date;
+    weeklyData[wk].grossSales += row.gross_sale || 0;
+    weeklyData[wk].effectiveRetail += (row.effective_retail || 0);
+    weeklyData[wk].marketplaces[marketplace] = (weeklyData[wk].marketplaces[marketplace] || 0) + (row.gross_sale || 0);
+    if (row.order_closed_date && row.order_closed_date < weeklyData[wk].sortDate) {
+      weeklyData[wk].sortDate = row.order_closed_date;
     }
   });
 
