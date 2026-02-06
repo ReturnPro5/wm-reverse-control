@@ -198,9 +198,9 @@ export function MonthlyTab() {
                             const { x, y, width, height, value } = props;
                             if (!value || value < 50000 || !height || height < 16 || !width || width < 30) return null;
                             let label = '';
-                            if (value >= 1000000) label = `$${(value / 1000000).toFixed(1)}M`;
-                            else if (value >= 1000) label = `$${(value / 1000).toFixed(0)}K`;
-                            else label = `$${value.toFixed(0)}`;
+                            if (value >= 1000000) label = `$${(value / 1000000).toFixed(2)}M`;
+                            else if (value >= 1000) label = `$${(value / 1000).toFixed(2)}K`;
+                            else label = `$${value.toFixed(2)}`;
                             return (
                               <text
                                 x={x + width / 2}
@@ -220,7 +220,7 @@ export function MonthlyTab() {
                       )}
                       {index === marketplaceList.length - 1 && (
                         <LabelList dataKey="grossSales" position="top" 
-                          formatter={(value: number) => { if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`; if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`; return `$${value.toFixed(0)}`; }}
+                          formatter={(value: number) => { if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`; if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`; return `$${value.toFixed(2)}`; }}
                           fill="hsl(var(--foreground))" fontSize={12} fontWeight={700}
                         />
                       )}
