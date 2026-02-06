@@ -25,6 +25,7 @@ interface MonthlyChartRow {
   gross_sales: number;
   effective_retail: number;
   units: number;
+  sort_date: string;
 }
 
 async function getMonthlyFileIds(): Promise<string[]> {

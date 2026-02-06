@@ -60,16 +60,19 @@ export function MonthlyTab() {
   const refundFeeTotal = kpis?.invoiced_refund_fee || 0;
 
   // Process chart data from server aggregation (grouped by WM Week)
-  const weeklyData: Record<number, { wmWeek: number; grossSales: number; effectiveRetail: number; marketplaces: Record<string, number> }> = {};
+  const weeklyData: Record<number, { wmWeek: number; grossSales: number; effectiveRetail: number; marketplaces: Record<string, number>; sortDate: string }> = {};
   (rawChartData || []).forEach(row => {
     const marketplace = row.marketplace || 'Unknown';
     const wk = row.wm_week;
     if (!weeklyData[wk]) {
-      weeklyData[wk] = { wmWeek: wk, grossSales: 0, effectiveRetail: 0, marketplaces: {} };
+      weeklyData[wk] = { wmWeek: wk, grossSales: 0, effectiveRetail: 0, marketplaces: {}, sortDate: row.sort_date || '' };
     }
     weeklyData[wk].grossSales += Number(row.gross_sales) || 0;
     weeklyData[wk].effectiveRetail += Number(row.effective_retail) || 0;
     weeklyData[wk].marketplaces[marketplace] = (weeklyData[wk].marketplaces[marketplace] || 0) + (Number(row.gross_sales) || 0);
+    if (row.sort_date && row.sort_date < weeklyData[wk].sortDate) {
+      weeklyData[wk].sortDate = row.sort_date;
+    }
   });
 
   const allMarketplaces = new Set<string>();
@@ -84,6 +87,7 @@ export function MonthlyTab() {
         wmWeek: d.wmWeek,
         grossSales: d.grossSales,
         recoveryRate: d.effectiveRetail > 0 ? (d.grossSales / d.effectiveRetail) * 100 : 0,
+        sortDate: d.sortDate,
       };
       marketplaceList.forEach(m => {
         result[m] = d.marketplaces[m] || 0;
@@ -91,7 +95,7 @@ export function MonthlyTab() {
       });
       return result;
     })
-    .sort((a, b) => a.wmWeek - b.wmWeek);
+    .sort((a, b) => a.sortDate.localeCompare(b.sortDate));
 
   const options = filterOptions || {
     programs: [], masterPrograms: [], categories: [], facilities: [],
