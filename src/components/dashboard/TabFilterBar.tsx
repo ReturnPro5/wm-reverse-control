@@ -211,14 +211,7 @@ export function TabFilterBar({
 
             {/* Marketplace */}
             <MultiSelect
-              options={marketplaces.map(m => {
-                // Clean up marketplace display names
-                let label = m;
-                if (m === 'B2C Manual - WhatNot') label = 'WhatNot';
-                else if (m === 'Shopify VipOutlet') label = 'VipOutlet';
-                else if (m.length > 18) label = m.slice(0, 18) + '...';
-                return { value: m, label };
-              })}
+              options={marketplaces.map(m => ({ value: m, label: m }))}
               selected={filters.marketplacesSoldOn}
               onChange={(values) => setFilter('marketplacesSoldOn', values)}
               placeholder="Marketplace"
