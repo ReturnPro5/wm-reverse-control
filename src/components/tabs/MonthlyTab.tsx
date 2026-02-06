@@ -2,6 +2,7 @@ import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { MonthlyFileUploadZone } from '@/components/dashboard/MonthlyFileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
+import { MonthlySalesPieChart } from '@/components/dashboard/MonthlySalesPieChart';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, Receipt, Calendar } from 'lucide-react';
 import { 
   XAxis, 
@@ -259,6 +260,9 @@ export function MonthlyTab() {
           </div>
         )}
       </div>
+
+      {/* Monthly Sales by Channel Pie Chart */}
+      <MonthlySalesPieChart salesData={salesData} isLoading={chartLoading} />
 
       {/* Refund Tracking */}
       {refundTotal > 0 && (
