@@ -227,15 +227,27 @@ export function MonthlyTab() {
                     </Bar>
                   );
                 })}
-                <Line yAxisId="right" type="monotone" dataKey="recoveryRate" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }} name="recoveryRate">
+                <Line yAxisId="right" type="monotone" dataKey="recoveryRate" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 5 }} activeDot={{ r: 7, strokeWidth: 2 }} name="recoveryRate" isAnimationActive={false}>
                   <LabelList 
                     dataKey="recoveryRate" 
                     position="top" 
-                    formatter={(value: number) => `${value.toFixed(1)}%`} 
-                    fill="hsl(var(--primary))" 
-                    fontSize={12} 
-                    fontWeight={700} 
-                    offset={10} 
+                    content={(props: any) => {
+                      const { x, y, value } = props;
+                      if (value == null) return null;
+                      return (
+                        <text
+                          x={x}
+                          y={y - 14}
+                          textAnchor="middle"
+                          fill="hsl(var(--primary))"
+                          fontSize={11}
+                          fontWeight={700}
+                          style={{ textShadow: '0 0 4px hsl(var(--background)), 0 0 4px hsl(var(--background))' }}
+                        >
+                          {`${Number(value).toFixed(1)}%`}
+                        </text>
+                      );
+                    }}
                   />
                 </Line>
               </ComposedChart>
