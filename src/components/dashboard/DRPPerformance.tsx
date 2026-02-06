@@ -7,7 +7,8 @@ const DRP_PROGRAMS = [
   'DS-WM-DRP-SC-8092',
   'DS-WM-DRP-IN-9193',
   'DS-WM-DRP-LV-9195',
-  'DS-WM-DRP- NY-9196-NORTH',
+  'DS-WM-DRP-NY-9196-NORTH',
+  'DS-WM-DRP- NY-9196-NORTH', // alternate spacing variant
 ];
 
 // Map program names to short facility labels
@@ -16,6 +17,7 @@ const FACILITY_MAP: Record<string, string> = {
   'DS-WM-DRP-SC-8092': '8092-SC',
   'DS-WM-DRP-IN-9193': '9193-IN',
   'DS-WM-DRP-LV-9195': '9195-LV',
+  'DS-WM-DRP-NY-9196-NORTH': '9196-NY',
   'DS-WM-DRP- NY-9196-NORTH': '9196-NY',
 };
 
