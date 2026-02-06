@@ -62,7 +62,7 @@ export function MonthlyTab() {
   // Process chart data from server aggregation (grouped by WM Week)
   const weeklyData: Record<number, { wmWeek: number; grossSales: number; effectiveRetail: number; marketplaces: Record<string, number>; sortDate: string }> = {};
   (rawChartData || []).forEach(row => {
-    const marketplace = row.marketplace || 'Unknown';
+    const marketplace = mapMarketplace({ marketplace_profile_sold_on: row.marketplace || null });
     const wk = row.wm_week;
     if (!weeklyData[wk]) {
       weeklyData[wk] = { wmWeek: wk, grossSales: 0, effectiveRetail: 0, marketplaces: {}, sortDate: row.sort_date || '' };
