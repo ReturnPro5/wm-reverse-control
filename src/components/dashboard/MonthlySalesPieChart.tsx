@@ -90,7 +90,7 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
       {isLoading ? (
         <div className="h-[400px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
       ) : pieData.length > 0 ? (
-        <div className="h-[450px] relative">
+        <div className="h-[450px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -109,6 +109,13 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
                   <Cell key={entry.name} fill={getMarketplaceColor(entry.name, index)} stroke="hsl(var(--background))" strokeWidth={2} />
                 ))}
               </Pie>
+              {/* Center total rendered as SVG customized content */}
+              <text x="50%" y="40%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={12}>
+                Total
+              </text>
+              <text x="50%" y="45%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={18} fontWeight={700}>
+                {formatCurrency(grandTotal)}
+              </text>
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'hsl(var(--card))',
@@ -127,13 +134,6 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
               />
             </PieChart>
           </ResponsiveContainer>
-          {/* Grand total centered in the donut hole */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ paddingBottom: '16%' }}>
-            <div className="text-center">
-              <p className="text-xs text-muted-foreground">Total</p>
-              <p className="text-lg font-bold">{formatCurrency(grandTotal)}</p>
-            </div>
-          </div>
         </div>
       ) : (
         <div className="h-[400px] flex items-center justify-center text-muted-foreground">
