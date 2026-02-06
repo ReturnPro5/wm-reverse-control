@@ -359,7 +359,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     <LabelList
                       dataKey="label"
                       content={({ x, y, value, index: idx }: any) => {
-                        if (typeof idx !== 'number' || idx >= 5) return null;
+                        if (typeof idx !== 'number' || idx >= 3) return null;
                         const entry = crossBuckets[idx];
                         if (!entry) return null;
                         const px = Number(x);
