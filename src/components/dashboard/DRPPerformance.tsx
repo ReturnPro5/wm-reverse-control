@@ -30,6 +30,7 @@ interface SalesRow {
   order_closed_date: string;
   tag_ebay_auction_sale?: boolean | null;
   b2c_auction?: string | null;
+  order_type_sold_on?: string | null;
 }
 
 interface DRPPerformanceProps {
@@ -67,6 +68,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
     if (!salesData?.length) return [];
     return salesData.filter(r =>
       r.program_name && DRP_PROGRAMS.some(p => r.program_name!.trim() === p.trim())
+      && r.order_type_sold_on === 'B2CMarketplace'
     );
   }, [salesData]);
 
