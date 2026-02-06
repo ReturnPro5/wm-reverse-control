@@ -90,7 +90,7 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
       {isLoading ? (
         <div className="h-[400px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
       ) : pieData.length > 0 ? (
-        <div className="h-[450px]">
+        <div className="h-[450px] relative">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -98,7 +98,7 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
                 cx="50%"
                 cy="42%"
                 outerRadius={150}
-                innerRadius={50}
+                innerRadius={55}
                 dataKey="value"
                 label={renderCustomLabel}
                 labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
@@ -127,10 +127,12 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
               />
             </PieChart>
           </ResponsiveContainer>
-          {/* Grand total in center text */}
-          <div className="text-center -mt-[260px] pointer-events-none">
-            <p className="text-sm text-muted-foreground">Total</p>
-            <p className="text-xl font-bold">{formatCurrency(grandTotal)}</p>
+          {/* Grand total centered in the donut hole */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ paddingBottom: '16%' }}>
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-lg font-bold">{formatCurrency(grandTotal)}</p>
+            </div>
           </div>
         </div>
       ) : (
