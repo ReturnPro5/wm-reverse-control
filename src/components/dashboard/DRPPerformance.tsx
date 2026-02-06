@@ -325,11 +325,11 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                    <ReferenceLine
                      y={weightedAvgASP}
-                     stroke="hsl(var(--muted-foreground))"
+                     stroke="hsl(var(--foreground))"
                      strokeDasharray="6 4"
-                     strokeWidth={1}
-                     strokeOpacity={0.5}
-                     label={{ value: `Weighted B2C ASP: ${formatFullDollar(weightedAvgASP)}`, position: 'right', fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 500 }}
+                     strokeWidth={1.5}
+                     strokeOpacity={0.7}
+                     label={{ value: `ASP ${formatFullDollar(weightedAvgASP)}`, position: 'left', fill: 'hsl(var(--foreground))', fontSize: 12, fontWeight: 600 }}
                    />
                   <XAxis
                     type="number"
