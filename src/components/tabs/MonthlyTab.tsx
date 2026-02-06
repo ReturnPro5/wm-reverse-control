@@ -103,6 +103,15 @@ export function MonthlyTab() {
     })
     .sort((a, b) => a.sortDate.localeCompare(b.sortDate));
 
+  // Derive dynamic month/year from order_closed_date for chart title
+  const allDates = (salesData || []).map(r => r.order_closed_date).filter(Boolean).sort();
+  const chartMonthLabel = allDates.length > 0
+    ? (() => {
+        const d = new Date(allDates[allDates.length - 1] + 'T12:00:00');
+        return `${d.toLocaleString('en-US', { month: 'long' })} ${d.getFullYear()}`;
+      })()
+    : '';
+
   const options = filterOptions || {
     programs: [], masterPrograms: [], categories: [], facilities: [],
     locations: [], ownerships: [], clientSources: [], marketplaces: [],
@@ -157,7 +166,7 @@ export function MonthlyTab() {
 
       {/* Monthly Sales Chart with Marketplace Breakdown */}
       <div className="bg-card rounded-lg border p-6">
-        <h3 className="text-lg font-semibold mb-6">Weekly Sales & Recovery by Marketplace (WM Fiscal Week)</h3>
+        <h3 className="text-lg font-semibold mb-6">{chartMonthLabel ? `${chartMonthLabel} Sales (WM Fiscal Week)` : 'Sales by Marketplace (WM Fiscal Week)'}</h3>
         
         {chartLoading ? (
           <div className="h-[450px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
