@@ -32,10 +32,10 @@ function renderCustomLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent
   const anchor = x > cx ? 'start' : 'end';
   return (
     <g>
-      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={13} fontWeight={600}>
+      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={14} fontWeight={600}>
         {name}
       </text>
-      <text x={x} y={y + 16} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={12}>
+      <text x={x} y={y + 18} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={13}>
         {`${formatCurrency(value)} · ${(percent * 100).toFixed(1)}%`}
       </text>
     </g>
@@ -120,6 +120,10 @@ export function MonthlySalesPieChart({ salesData, isLoading }: MonthlySalesPieCh
                   const pct = grandTotal > 0 ? ((value / grandTotal) * 100).toFixed(1) : '0.0';
                   return [`${formatCurrency(value)} (${pct}%)`, name];
                 }}
+              />
+              <Legend
+                formatter={(value: string) => value}
+                wrapperStyle={{ fontSize: 13, paddingTop: 12 }}
               />
             </PieChart>
           </ResponsiveContainer>
