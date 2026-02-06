@@ -366,7 +366,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                         const py = Number(y);
                         const baseUp = 55;
                         const angle55 = (55 * Math.PI) / 180;
-                        const endX = px + baseUp * Math.cos(angle55) - idx * 325;
+                        const endX = px + baseUp * Math.cos(angle55) - idx * 162;
                         const endY = py - baseUp * Math.sin(angle55);
                         return (
                           <g>
