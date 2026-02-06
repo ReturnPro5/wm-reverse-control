@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ZAxis } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ZAxis, LabelList } from 'recharts';
 import { mapMarketplace, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 const DRP_PROGRAMS = [
@@ -356,6 +356,25 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     {crossBuckets.map((entry, index) => (
                       <Cell key={entry.label} fill={getMarketplaceColor(entry.channel, index)} />
                     ))}
+                    <LabelList
+                      dataKey="label"
+                      content={({ x, y, value, index: idx }: any) => {
+                        // Only label top 5 by sales
+                        if (typeof idx !== 'number' || idx >= 5) return null;
+                        const entry = crossBuckets[idx];
+                        if (!entry) return null;
+                        return (
+                          <g>
+                            <text x={Number(x) + 10} y={Number(y) - 14} fill="hsl(var(--foreground))" fontSize={12} fontWeight={600}>
+                              {entry.channel}
+                            </text>
+                            <text x={Number(x) + 10} y={Number(y) - 1} fill="hsl(var(--muted-foreground))" fontSize={11}>
+                              {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
+                            </text>
+                          </g>
+                        );
+                      }}
+                    />
                   </Scatter>
                 </ScatterChart>
               </ResponsiveContainer>
