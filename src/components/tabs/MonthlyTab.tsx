@@ -3,6 +3,7 @@ import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { MonthlyFileUploadZone } from '@/components/dashboard/MonthlyFileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { MonthlySalesPieChart } from '@/components/dashboard/MonthlySalesPieChart';
+import { MonthlySalesTable } from '@/components/dashboard/MonthlySalesTable';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, Receipt, Calendar } from 'lucide-react';
 import { 
   XAxis, 
@@ -272,6 +273,9 @@ export function MonthlyTab() {
 
       {/* Monthly Sales by Channel Pie Chart */}
       <MonthlySalesPieChart salesData={salesData} isLoading={chartLoading} />
+
+      {/* Sales by Channel Breakdown Table */}
+      <MonthlySalesTable salesData={salesData} isLoading={chartLoading} />
 
       {/* Refund Tracking */}
       {refundTotal > 0 && (
