@@ -48,16 +48,15 @@ const formatPct = (v: number) => `${Math.round(v)}%`;
 
 const RADIAN = Math.PI / 180;
 function renderCustomLabel({ cx, cy, midAngle, outerRadius, percent, name, value }: any) {
-  // Only label slices >= 5% to prevent overlap
   if (percent < 0.05) return null;
-  const r = outerRadius + 24;
+  const r = outerRadius + 28;
   const x = cx + r * Math.cos(-midAngle * RADIAN);
   const y = cy + r * Math.sin(-midAngle * RADIAN);
   const anchor = x > cx ? 'start' : 'end';
   return (
     <g>
-      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={11} fontWeight={600}>{name}</text>
-      <text x={x} y={y + 14} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={10}>
+      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={13} fontWeight={600}>{name}</text>
+      <text x={x} y={y + 16} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={12}>
         {`${formatCurrency(value)} · ${(percent * 100).toFixed(1)}%`}
       </text>
     </g>
@@ -250,15 +249,15 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} DRP Sales by Channel</h3>
           {pieData.length > 0 ? (
-            <div className="h-[360px]">
+            <div className="h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={pieData}
                     cx="50%"
-                    cy="45%"
-                    outerRadius={90}
-                    innerRadius={35}
+                    cy="44%"
+                    outerRadius={110}
+                    innerRadius={42}
                     dataKey="value"
                     label={renderCustomLabel}
                     labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
@@ -269,8 +268,8 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                       <Cell key={entry.name} fill={getMarketplaceColor(entry.name, index)} stroke="hsl(var(--background))" strokeWidth={2} />
                     ))}
                   </Pie>
-                  <text x="50%" y="43%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={10}>Total</text>
-                  <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={14} fontWeight={700}>
+                  <text x="50%" y="42%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={11}>Total</text>
+                  <text x="50%" y="47%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={16} fontWeight={700}>
                     {formatCurrency(totalSales)}
                   </text>
                   <Tooltip
@@ -280,40 +279,40 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                       return [`${formatCurrency(value)} (${pct}%)`, name];
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[360px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
+            <div className="h-[400px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
           )}
         </div>
 
-        {/* Avg Sale Price vs Units Tradeoff */}
+        {/* Avg Sale Price vs Units Tradeoff - same grid cell */}
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} Avg Sale Price vs Units</h3>
           {channelStats.length > 0 ? (
-            <div className="h-[320px]">
+            <div className="h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 20 }}>
+                <ScatterChart margin={{ top: 10, right: 30, bottom: 50, left: 30 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis
                     type="number"
                     dataKey="units"
                     name="Units"
-                    tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
-                    label={{ value: 'Units Sold', position: 'bottom', offset: 20, fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                    tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v)}
+                    label={{ value: 'Units Sold', position: 'bottom', offset: 28, fill: 'hsl(var(--muted-foreground))', fontSize: 13 }}
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                   />
                   <YAxis
                     type="number"
                     dataKey="avgSalePrice"
                     name="Avg Price"
                     tickFormatter={(v: number) => `$${v}`}
-                    label={{ value: 'Avg Sale Price', angle: -90, position: 'insideLeft', offset: -5, fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                    label={{ value: 'Avg Sale Price', angle: -90, position: 'insideLeft', offset: -10, fill: 'hsl(var(--muted-foreground))', fontSize: 13 }}
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                   />
-                  <ZAxis type="number" dataKey="sales" range={[200, 2000]} name="Sales" />
+                  <ZAxis type="number" dataKey="sales" range={[300, 2500]} name="Sales" />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 13 }}
                     formatter={(value: number, name: string) => {
@@ -323,20 +322,26 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                       return [value, name];
                     }}
                     labelFormatter={(_, payload) => {
-                      if (payload?.[0]?.payload?.channel) return payload[0].payload.channel;
-                      return '';
+                      const p = payload?.[0]?.payload;
+                      return p?.channel || p?.facility || '';
                     }}
                   />
-                  <Scatter data={channelStats} isAnimationActive={false}>
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} />
+                  <Scatter name="By Channel" data={channelStats.map(c => ({ ...c, units: c.units, avgSalePrice: c.avgSalePrice, sales: c.sales }))} fill="hsl(var(--primary))" isAnimationActive={false}>
                     {channelStats.map((entry, index) => (
                       <Cell key={entry.channel} fill={getMarketplaceColor(entry.channel, index)} />
+                    ))}
+                  </Scatter>
+                  <Scatter name="By Facility" data={facilityStats.map(f => ({ ...f, channel: null, units: f.units, avgSalePrice: f.avgSalePrice, sales: f.sales }))} fill="hsl(var(--muted-foreground))" isAnimationActive={false} shape="diamond">
+                    {facilityStats.map((entry, index) => (
+                      <Cell key={entry.facility} fill={`hsl(var(--muted-foreground))`} />
                     ))}
                   </Scatter>
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[320px] flex items-center justify-center text-muted-foreground">No data available.</div>
+            <div className="h-[400px] flex items-center justify-center text-muted-foreground">No data available.</div>
           )}
         </div>
       </div>
