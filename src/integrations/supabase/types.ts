@@ -414,6 +414,8 @@ export type Database = {
           sold_same_week_sales: number
         }[]
       }
+      get_monthly_chart_data: { Args: { p_file_ids?: string[] }; Returns: Json }
+      get_monthly_kpis: { Args: { p_file_ids?: string[] }; Returns: Json }
       get_wm_day_of_week: { Args: { p_date: string }; Returns: number }
       get_wm_week_date_range: {
         Args: { p_wm_week: number; p_year?: number }
