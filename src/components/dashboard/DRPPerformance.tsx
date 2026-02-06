@@ -359,18 +359,15 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     <LabelList
                       dataKey="label"
                       content={({ x, y, value, index: idx }: any) => {
-                        if (typeof idx !== 'number' || idx >= 3) return null;
+                        if (typeof idx !== 'number' || idx >= 2) return null;
                         const entry = crossBuckets[idx];
                         if (!entry) return null;
                         const px = Number(x);
                         const py = Number(y);
-                        // Each label gets a progressively longer leader line at 45°
-                        // so labels never stack on top of each other
-                        const dist = 55 + idx * 65;
-                        const cos45 = Math.cos(Math.PI / 4);
-                        const sin45 = Math.sin(Math.PI / 4);
-                        const endX = px + dist * cos45;
-                        const endY = py - dist * sin45;
+                        const angle55 = (55 * Math.PI) / 180;
+                        const dist = 55 + idx * 325;
+                        const endX = px + dist * Math.cos(angle55);
+                        const endY = py - dist * Math.sin(angle55);
                         return (
                           <g>
                             <line
@@ -383,7 +380,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                             />
                             <circle cx={px} cy={py} r={3} fill="hsl(var(--foreground))" opacity={0.4} />
                             <g transform={`translate(${endX}, ${endY})`}>
-                              <g transform="rotate(-45)">
+                              <g transform="rotate(-55)">
                                 <text x={4} y={0} textAnchor="start" fill="hsl(var(--foreground))" fontSize={14} fontWeight={700} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={5} strokeLinejoin="round">
                                   {entry.channel} · {entry.facility}
                                 </text>
