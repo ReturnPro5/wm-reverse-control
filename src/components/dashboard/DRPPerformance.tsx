@@ -128,6 +128,32 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
       .sort((a, b) => b.sales - a.sales);
   }, [drpData]);
 
+  // Channel × Facility cross-buckets for scatter chart
+  const crossBuckets = useMemo(() => {
+    const map: Record<string, { units: number; sales: number; channel: string; facility: string }> = {};
+    drpData.forEach(r => {
+      const ch = mapMarketplace({
+        marketplace_profile_sold_on: r.marketplace_profile_sold_on ?? null,
+        tag_ebay_auction_sale: r.tag_ebay_auction_sale,
+        b2c_auction: r.b2c_auction,
+      });
+      const prog = r.program_name?.trim() || '';
+      const fac = FACILITY_MAP[prog] || r.facility || 'Unknown';
+      const key = `${ch}||${fac}`;
+      if (!map[key]) map[key] = { units: 0, sales: 0, channel: ch, facility: fac };
+      map[key].units += 1;
+      map[key].sales += r.gross_sale || 0;
+    });
+    return Object.values(map)
+      .filter(b => b.units > 0)
+      .map(b => ({
+        ...b,
+        label: `${b.channel} @ ${b.facility}`,
+        avgSalePrice: b.units > 0 ? b.sales / b.units : 0,
+      }))
+      .sort((a, b) => b.sales - a.sales);
+  }, [drpData]);
+
   const totalSales = channelStats.reduce((s, r) => s + r.sales, 0);
   const totalRetail = channelStats.reduce((s, r) => s + r.grossRoR, 0); // just for totals row
   const totalRetailActual = drpData.reduce((s, r) => s + (r.effective_retail || 0), 0);
@@ -288,33 +314,33 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
           )}
         </div>
 
-        {/* Avg Sale Price vs Units Tradeoff - same grid cell */}
+        {/* Avg Sale Price vs Units Tradeoff */}
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} Avg Sale Price vs Units</h3>
-          {channelStats.length > 0 ? (
-            <div className="h-[400px]">
+          {crossBuckets.length > 0 ? (
+            <div className="h-[420px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 30, bottom: 50, left: 30 }}>
+                <ScatterChart margin={{ top: 10, right: 30, bottom: 55, left: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis
                     type="number"
                     dataKey="units"
                     name="Units"
                     tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v)}
-                    label={{ value: 'Units Sold', position: 'bottom', offset: 28, fill: 'hsl(var(--muted-foreground))', fontSize: 13 }}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    label={{ value: 'Units Sold', position: 'bottom', offset: 32, fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 }}
+                    tick={{ fill: 'hsl(var(--foreground))', fontSize: 13 }}
                   />
                   <YAxis
                     type="number"
                     dataKey="avgSalePrice"
                     name="Avg Price"
-                    tickFormatter={(v: number) => `$${v}`}
-                    label={{ value: 'Avg Sale Price', angle: -90, position: 'insideLeft', offset: -10, fill: 'hsl(var(--muted-foreground))', fontSize: 13 }}
-                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    tickFormatter={(v: number) => `$${Math.round(v)}`}
+                    label={{ value: 'Avg Sale Price', angle: -90, position: 'insideLeft', offset: -20, fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 }}
+                    tick={{ fill: 'hsl(var(--foreground))', fontSize: 13 }}
                   />
-                  <ZAxis type="number" dataKey="sales" range={[300, 2500]} name="Sales" />
+                  <ZAxis type="number" dataKey="sales" range={[200, 2000]} name="Sales" />
                   <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 13 }}
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 14 }}
                     formatter={(value: number, name: string) => {
                       if (name === 'Units') return [value.toLocaleString(), name];
                       if (name === 'Avg Price') return [formatFullDollar(value), name];
@@ -323,25 +349,19 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     }}
                     labelFormatter={(_, payload) => {
                       const p = payload?.[0]?.payload;
-                      return p?.channel || p?.facility || '';
+                      return p?.label || '';
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} />
-                  <Scatter name="By Channel" data={channelStats.map(c => ({ ...c, units: c.units, avgSalePrice: c.avgSalePrice, sales: c.sales }))} fill="hsl(var(--primary))" isAnimationActive={false}>
-                    {channelStats.map((entry, index) => (
-                      <Cell key={entry.channel} fill={getMarketplaceColor(entry.channel, index)} />
-                    ))}
-                  </Scatter>
-                  <Scatter name="By Facility" data={facilityStats.map(f => ({ ...f, channel: null, units: f.units, avgSalePrice: f.avgSalePrice, sales: f.sales }))} fill="hsl(var(--muted-foreground))" isAnimationActive={false} shape="diamond">
-                    {facilityStats.map((entry, index) => (
-                      <Cell key={entry.facility} fill={`hsl(var(--muted-foreground))`} />
+                  <Scatter name="Channel × Facility" data={crossBuckets} isAnimationActive={false}>
+                    {crossBuckets.map((entry, index) => (
+                      <Cell key={entry.label} fill={getMarketplaceColor(entry.channel, index)} />
                     ))}
                   </Scatter>
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[400px] flex items-center justify-center text-muted-foreground">No data available.</div>
+            <div className="h-[420px] flex items-center justify-center text-muted-foreground">No data available.</div>
           )}
         </div>
       </div>
