@@ -359,18 +359,24 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     <LabelList
                       dataKey="label"
                       content={({ x, y, value, index: idx }: any) => {
-                        // Only label top 5 by sales
                         if (typeof idx !== 'number' || idx >= 5) return null;
                         const entry = crossBuckets[idx];
                         if (!entry) return null;
+                        // Stagger angles to avoid overlap: alternate between -35° and -50°
+                        const angles = [-30, -45, -25, -50, -35];
+                        const angle = angles[idx % angles.length];
+                        const offsetX = 14;
+                        const offsetY = -14;
                         return (
-                          <g>
-                            <text x={Number(x) + 10} y={Number(y) - 14} fill="hsl(var(--foreground))" fontSize={12} fontWeight={600}>
-                              {entry.channel}
-                            </text>
-                            <text x={Number(x) + 10} y={Number(y) - 1} fill="hsl(var(--muted-foreground))" fontSize={11}>
-                              {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
-                            </text>
+                          <g transform={`translate(${Number(x) + offsetX}, ${Number(y) + offsetY})`}>
+                            <g transform={`rotate(${angle})`}>
+                              <text x={0} y={0} fill="hsl(var(--foreground))" fontSize={14} fontWeight={700} dominantBaseline="auto">
+                                {entry.channel} @ {entry.facility}
+                              </text>
+                              <text x={0} y={16} fill="hsl(var(--muted-foreground))" fontSize={13} fontWeight={500} dominantBaseline="auto">
+                                {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
+                              </text>
+                            </g>
                           </g>
                         );
                       }}
