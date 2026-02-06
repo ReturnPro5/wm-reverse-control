@@ -15,7 +15,7 @@ import {
   Bar,
   LabelList
 } from 'recharts';
-import { format, parseISO } from 'date-fns';
+
 import { useFilterOptions } from '@/hooks/useFilteredData';
 import { useMonthlyKPIs, useMonthlyChartData } from '@/hooks/useMonthlyData';
 import { mapMarketplace, getMarketplaceColor } from '@/lib/marketplaceMapping';
@@ -59,28 +59,29 @@ export function MonthlyTab() {
   const marketingFeeTotal = kpis?.invoiced_marketing_fee || 0;
   const refundFeeTotal = kpis?.invoiced_refund_fee || 0;
 
-  // Process chart data from server aggregation
-  const monthlyData: Record<string, { month: string; grossSales: number; effectiveRetail: number; marketplaces: Record<string, number> }> = {};
+  // Process chart data from server aggregation (grouped by WM Week)
+  const weeklyData: Record<number, { wmWeek: number; grossSales: number; effectiveRetail: number; marketplaces: Record<string, number> }> = {};
   (rawChartData || []).forEach(row => {
     const marketplace = row.marketplace || 'Unknown';
-    if (!monthlyData[row.month]) {
-      monthlyData[row.month] = { month: row.month, grossSales: 0, effectiveRetail: 0, marketplaces: {} };
+    const wk = row.wm_week;
+    if (!weeklyData[wk]) {
+      weeklyData[wk] = { wmWeek: wk, grossSales: 0, effectiveRetail: 0, marketplaces: {} };
     }
-    monthlyData[row.month].grossSales += Number(row.gross_sales) || 0;
-    monthlyData[row.month].effectiveRetail += Number(row.effective_retail) || 0;
-    monthlyData[row.month].marketplaces[marketplace] = (monthlyData[row.month].marketplaces[marketplace] || 0) + (Number(row.gross_sales) || 0);
+    weeklyData[wk].grossSales += Number(row.gross_sales) || 0;
+    weeklyData[wk].effectiveRetail += Number(row.effective_retail) || 0;
+    weeklyData[wk].marketplaces[marketplace] = (weeklyData[wk].marketplaces[marketplace] || 0) + (Number(row.gross_sales) || 0);
   });
 
   const allMarketplaces = new Set<string>();
-  Object.values(monthlyData).forEach(d => {
+  Object.values(weeklyData).forEach(d => {
     Object.keys(d.marketplaces).forEach(m => allMarketplaces.add(m));
   });
   const marketplaceList = Array.from(allMarketplaces).sort();
 
-  const chartData = Object.values(monthlyData)
+  const chartData = Object.values(weeklyData)
     .map(d => {
       const result: Record<string, any> = {
-        month: d.month,
+        wmWeek: d.wmWeek,
         grossSales: d.grossSales,
         recoveryRate: d.effectiveRetail > 0 ? (d.grossSales / d.effectiveRetail) * 100 : 0,
       };
@@ -90,8 +91,7 @@ export function MonthlyTab() {
       });
       return result;
     })
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .slice(-12);
+    .sort((a, b) => a.wmWeek - b.wmWeek);
 
   const options = filterOptions || {
     programs: [], masterPrograms: [], categories: [], facilities: [],
@@ -147,7 +147,7 @@ export function MonthlyTab() {
 
       {/* Monthly Sales Chart with Marketplace Breakdown */}
       <div className="bg-card rounded-lg border p-6">
-        <h3 className="text-lg font-semibold mb-6">Monthly Sales & Recovery by Marketplace</h3>
+        <h3 className="text-lg font-semibold mb-6">Weekly Sales & Recovery by Marketplace (WM Fiscal Week)</h3>
         
         {chartLoading ? (
           <div className="h-[400px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
@@ -157,15 +157,15 @@ export function MonthlyTab() {
               <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis 
-                  dataKey="month" 
-                  tickFormatter={(m) => { try { return format(parseISO(m + '-01'), 'MMM yyyy'); } catch { return m; } }}
+                  dataKey="wmWeek" 
+                  tickFormatter={(wk) => `WK ${wk}`}
                   tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                 />
                 <YAxis yAxisId="left" tickFormatter={formatCurrency} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                 <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
-                  labelFormatter={(m) => { try { return format(parseISO(m + '-01'), 'MMMM yyyy'); } catch { return m; } }}
+                  labelFormatter={(wk) => `WM Fiscal Week ${wk}`}
                   formatter={(value: number, name: string, props: any) => {
                     if (name === 'recoveryRate') return [`${value.toFixed(1)}%`, 'Recovery Rate'];
                     const pct = props.payload[`${name}_pct`];
