@@ -77,21 +77,24 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
 
   // Channel breakdown
   const channelStats = useMemo(() => {
-    const map: Record<string, { sales: number; retail: number }> = {};
+    const map: Record<string, { sales: number; retail: number; units: number }> = {};
     drpData.forEach(r => {
       const ch = mapMarketplace({
         marketplace_profile_sold_on: r.marketplace_profile_sold_on ?? null,
         tag_ebay_auction_sale: r.tag_ebay_auction_sale,
         b2c_auction: r.b2c_auction,
       });
-      if (!map[ch]) map[ch] = { sales: 0, retail: 0 };
+      if (!map[ch]) map[ch] = { sales: 0, retail: 0, units: 0 };
       map[ch].sales += r.gross_sale || 0;
       map[ch].retail += r.effective_retail || 0;
+      map[ch].units += 1;
     });
     return Object.entries(map)
-      .map(([channel, { sales, retail }]) => ({
+      .map(([channel, { sales, retail, units }]) => ({
         channel,
+        units,
         sales,
+        avgSalePrice: units > 0 ? sales / units : 0,
         grossRoR: retail > 0 ? (sales / retail) * 100 : 0,
         netRoR: null as number | null, // placeholder
       }))
@@ -114,6 +117,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         facility,
         units,
         sales,
+        avgSalePrice: units > 0 ? sales / units : 0,
         grossRoR: retail > 0 ? (sales / retail) * 100 : 0,
         netRoR: null as number | null,
       }))
@@ -155,7 +159,9 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
               <thead>
                 <tr className="border-b-2 border-primary/30">
                   <th className="text-left py-2.5 px-3 font-semibold text-muted-foreground">Channel</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Units</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Sales</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Avg Price</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Gross RoR</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Net RoR</th>
                 </tr>
@@ -167,7 +173,9 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                       <span className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: getMarketplaceColor(row.channel, idx) }} />
                       {row.channel}
                     </td>
+                    <td className="py-2 px-3 text-right tabular-nums">{row.units.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{formatFullDollar(row.sales)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{formatFullDollar(row.avgSalePrice)}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{formatPct(row.grossRoR)}</td>
                     <td className="py-2 px-3 text-right tabular-nums text-muted-foreground/50">—</td>
                   </tr>
@@ -176,7 +184,9 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
               <tfoot>
                 <tr className="border-t-2 border-primary/30 bg-muted/20">
                   <td className="py-2.5 px-3 font-bold">Total</td>
+                  <td className="py-2.5 px-3 text-right font-bold tabular-nums">{totalUnits.toLocaleString()}</td>
                   <td className="py-2.5 px-3 text-right font-bold tabular-nums text-primary">{formatFullDollar(totalSales)}</td>
+                  <td className="py-2.5 px-3 text-right font-bold tabular-nums">{totalUnits > 0 ? formatFullDollar(totalSales / totalUnits) : '$0'}</td>
                   <td className="py-2.5 px-3 text-right font-bold tabular-nums">{formatPct(totalGrossRoR)}</td>
                   <td className="py-2.5 px-3 text-right font-bold tabular-nums text-muted-foreground/50">—</td>
                 </tr>
@@ -197,6 +207,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                   <th className="text-left py-2.5 px-3 font-semibold text-muted-foreground">Facility</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Units</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Sales</th>
+                  <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Avg Price</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Gross RoR</th>
                   <th className="text-right py-2.5 px-3 font-semibold text-muted-foreground">Net RoR</th>
                 </tr>
@@ -207,6 +218,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                     <td className="py-2 px-3 font-medium">{row.facility}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{row.units.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{formatFullDollar(row.sales)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{formatFullDollar(row.avgSalePrice)}</td>
                     <td className="py-2 px-3 text-right tabular-nums">{formatPct(row.grossRoR)}</td>
                     <td className="py-2 px-3 text-right tabular-nums text-muted-foreground/50">—</td>
                   </tr>
@@ -217,6 +229,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                   <td className="py-2.5 px-3 font-bold">Total</td>
                   <td className="py-2.5 px-3 text-right font-bold tabular-nums">{totalUnits.toLocaleString()}</td>
                   <td className="py-2.5 px-3 text-right font-bold tabular-nums text-primary">{formatFullDollar(totalSales)}</td>
+                  <td className="py-2.5 px-3 text-right font-bold tabular-nums">{totalUnits > 0 ? formatFullDollar(totalSales / totalUnits) : '$0'}</td>
                   <td className="py-2.5 px-3 text-right font-bold tabular-nums">{formatPct(totalGrossRoR)}</td>
                   <td className="py-2.5 px-3 text-right font-bold tabular-nums text-muted-foreground/50">—</td>
                 </tr>
