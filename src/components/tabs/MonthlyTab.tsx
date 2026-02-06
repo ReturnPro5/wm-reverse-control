@@ -194,16 +194,28 @@ export function MonthlyTab() {
                         <LabelList 
                           dataKey={marketplace} 
                           position="inside"
-                          formatter={(value: number) => {
-                            if (value < 1000) return '';
-                            if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-                            if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
-                            return `$${value.toFixed(0)}`;
+                          content={(props: any) => {
+                            const { x, y, width, height, value } = props;
+                            if (!value || value < 50000 || !height || height < 16 || !width || width < 30) return null;
+                            let label = '';
+                            if (value >= 1000000) label = `$${(value / 1000000).toFixed(1)}M`;
+                            else if (value >= 1000) label = `$${(value / 1000).toFixed(0)}K`;
+                            else label = `$${value.toFixed(0)}`;
+                            return (
+                              <text
+                                x={x + width / 2}
+                                y={y + height / 2}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                fill="#ffffff"
+                                fontSize={height < 22 ? 9 : 10}
+                                fontWeight={700}
+                                style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)', pointerEvents: 'none' }}
+                              >
+                                {label}
+                              </text>
+                            );
                           }}
-                          fill="#ffffff"
-                          fontSize={10}
-                          fontWeight={700}
-                          style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
                         />
                       )}
                       {index === marketplaceList.length - 1 && (
