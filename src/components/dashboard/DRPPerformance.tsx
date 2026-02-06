@@ -161,6 +161,14 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
   const totalUnits = drpData.length;
   const weightedAvgASP = totalUnits > 0 ? totalSales / totalUnits : 0;
 
+  // Outlier-filtered scatter data: exclude points with ASP > 5× weighted avg AND units < 1% of total
+  const scatterData = useMemo(() => {
+    if (crossBuckets.length === 0 || weightedAvgASP === 0 || totalUnits === 0) return crossBuckets;
+    const aspThreshold = weightedAvgASP * 5;
+    const unitsThreshold = totalUnits * 0.01;
+    return crossBuckets.filter(b => !(b.avgSalePrice > aspThreshold && b.units < unitsThreshold));
+  }, [crossBuckets, weightedAvgASP, totalUnits]);
+
   // Pie data
   const pieData = channelStats.filter(c => c.sales > 0).map(c => ({ name: c.channel, value: c.sales }));
 
@@ -318,7 +326,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         {/* Avg Sale Price vs Units Tradeoff */}
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} Avg Sale Price vs Units</h3>
-          {crossBuckets.length > 0 ? (
+          {scatterData.length > 0 ? (
             <div className="h-[420px]">
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart margin={{ top: 80, right: 60, bottom: 55, left: 50 }}>
@@ -363,7 +371,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                    />
                    <Legend
                      content={() => {
-                       const channels = Array.from(new Set(crossBuckets.map(b => b.channel)));
+                       const channels = Array.from(new Set(scatterData.map(b => b.channel)));
                        return (
                          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '12px', paddingTop: 6, fontSize: 12 }}>
                            {channels.map((ch, i) => (
@@ -376,15 +384,15 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                        );
                      }}
                    />
-                  <Scatter name="Channel × Facility" data={crossBuckets} isAnimationActive={false}>
-                    {crossBuckets.map((entry, index) => (
+                  <Scatter name="Channel × Facility" data={scatterData} isAnimationActive={false}>
+                    {scatterData.map((entry, index) => (
                       <Cell key={entry.label} fill={getMarketplaceColor(entry.channel, index)} />
                     ))}
                     <LabelList
                       dataKey="label"
                       content={({ x, y, value, index: idx }: any) => {
                         if (typeof idx !== 'number' || idx >= 2) return null;
-                        const entry = crossBuckets[idx];
+                        const entry = scatterData[idx];
                         if (!entry) return null;
                         const px = Number(x);
                         const py = Number(y);
