@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ZAxis } from 'recharts';
 import { mapMarketplace, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 const DRP_PROGRAMS = [
@@ -243,47 +243,107 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         </div>
       </div>
 
-      {/* Pie Chart */}
-      <div className="bg-card rounded-lg border p-6">
-        <h3 className="text-lg font-semibold mb-6">{dynamicTitle} DRP Sales by Channel</h3>
-        {pieData.length > 0 ? (
-          <div className="h-[420px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="42%"
-                  outerRadius={140}
-                  innerRadius={50}
-                  dataKey="value"
-                  label={renderCustomLabel}
-                  labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
-                  isAnimationActive={false}
-                  paddingAngle={2}
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={entry.name} fill={getMarketplaceColor(entry.name, index)} stroke="hsl(var(--background))" strokeWidth={2} />
-                  ))}
-                </Pie>
-                <text x="50%" y="40%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={12}>Total</text>
-                <text x="50%" y="45%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={18} fontWeight={700}>
-                  {formatCurrency(totalSales)}
-                </text>
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 14 }}
-                  formatter={(value: number, name: string) => {
-                    const pct = totalSales > 0 ? ((value / totalSales) * 100).toFixed(1) : '0.0';
-                    return [`${formatCurrency(value)} (${pct}%)`, name];
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 14, paddingTop: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <div className="h-[300px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
-        )}
+      {/* Pie Chart + Tradeoff Chart side by side */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Pie Chart */}
+        <div className="bg-card rounded-lg border p-5">
+          <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} DRP Sales by Channel</h3>
+          {pieData.length > 0 ? (
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="45%"
+                    outerRadius={100}
+                    innerRadius={40}
+                    dataKey="value"
+                    isAnimationActive={false}
+                    paddingAngle={2}
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={entry.name} fill={getMarketplaceColor(entry.name, index)} stroke="hsl(var(--background))" strokeWidth={2} />
+                    ))}
+                  </Pie>
+                  <text x="50%" y="43%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={11}>Total</text>
+                  <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={16} fontWeight={700}>
+                    {formatCurrency(totalSales)}
+                  </text>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 13 }}
+                    formatter={(value: number, name: string) => {
+                      const pct = totalSales > 0 ? ((value / totalSales) * 100).toFixed(1) : '0.0';
+                      return [`${formatCurrency(value)} (${pct}%)`, name];
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                    formatter={(value: string, entry: any) => {
+                      const item = pieData.find(d => d.name === value);
+                      if (!item) return value;
+                      const pct = totalSales > 0 ? ((item.value / totalSales) * 100).toFixed(1) : '0.0';
+                      return `${value} · ${formatCurrency(item.value)} · ${pct}%`;
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-[320px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
+          )}
+        </div>
+
+        {/* Avg Sale Price vs Units Tradeoff */}
+        <div className="bg-card rounded-lg border p-5">
+          <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} Avg Sale Price vs Units</h3>
+          {channelStats.length > 0 ? (
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    type="number"
+                    dataKey="units"
+                    name="Units"
+                    tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
+                    label={{ value: 'Units Sold', position: 'bottom', offset: 20, fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="avgSalePrice"
+                    name="Avg Price"
+                    tickFormatter={(v: number) => `$${v}`}
+                    label={{ value: 'Avg Sale Price', angle: -90, position: 'insideLeft', offset: -5, fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                  />
+                  <ZAxis type="number" dataKey="sales" range={[200, 2000]} name="Sales" />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 13 }}
+                    formatter={(value: number, name: string) => {
+                      if (name === 'Units') return [value.toLocaleString(), name];
+                      if (name === 'Avg Price') return [formatFullDollar(value), name];
+                      if (name === 'Sales') return [formatCurrency(value), 'Total Sales'];
+                      return [value, name];
+                    }}
+                    labelFormatter={(_, payload) => {
+                      if (payload?.[0]?.payload?.channel) return payload[0].payload.channel;
+                      return '';
+                    }}
+                  />
+                  <Scatter data={channelStats} isAnimationActive={false}>
+                    {channelStats.map((entry, index) => (
+                      <Cell key={entry.channel} fill={getMarketplaceColor(entry.channel, index)} />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-[320px] flex items-center justify-center text-muted-foreground">No data available.</div>
+          )}
+        </div>
       </div>
     </div>
   );
