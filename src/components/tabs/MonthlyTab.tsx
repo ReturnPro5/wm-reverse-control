@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { TabFilterBar } from '@/components/dashboard/TabFilterBar';
 import { MonthlyFileUploadZone } from '@/components/dashboard/MonthlyFileUploadZone';
 import { TabFileManager } from '@/components/dashboard/TabFileManager';
 import { MonthlySalesPieChart } from '@/components/dashboard/MonthlySalesPieChart';
 import { MonthlySalesTable } from '@/components/dashboard/MonthlySalesTable';
+import { DRPPerformance } from '@/components/dashboard/DRPPerformance';
 import { DollarSign, Percent, Package, TrendingUp, AlertTriangle, Receipt, Calendar } from 'lucide-react';
 import { 
   XAxis, 
@@ -30,6 +32,7 @@ const formatCurrency = (value: number) => {
 };
 
 export function MonthlyTab() {
+  const [subTab, setSubTab] = useState<'overview' | 'drp'>('overview');
   const { data: filterOptions, refetch: refetchOptions } = useFilterOptions();
   const { data: salesData, isLoading: salesLoading, refetch: refetchSales } = useFilteredSales(TAB_NAME);
 
@@ -129,6 +132,30 @@ export function MonthlyTab() {
         <p className="text-muted-foreground">Gross sales metrics aggregated by calendar month</p>
       </div>
 
+      {/* Sub-tab navigation */}
+      <div className="flex gap-1 border-b border-border">
+        <button
+          onClick={() => setSubTab('overview')}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            subTab === 'overview'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setSubTab('drp')}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            subTab === 'drp'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          DRP RC Performance
+        </button>
+      </div>
+
       <TabFilterBar
         tabName={TAB_NAME}
         programs={options.programs}
@@ -145,172 +172,178 @@ export function MonthlyTab() {
         onRefresh={refetch}
       />
 
-      {/* Main KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <KPICard title="Gross Sales" value={formatCurrency(grossSales)} subtitle="Never reduced by fees or refunds" icon={<DollarSign className="h-5 w-5" />} variant="success" isLoading={kpisLoading} />
-        <KPICard title="Recovery Rate" value={`${recoveryRate.toFixed(1)}%`} subtitle="Gross Sales / Effective Retail" icon={<Percent className="h-5 w-5" />} variant="info" isLoading={kpisLoading} />
-        <KPICard title="Units Sold" value={unitsCount.toLocaleString()} subtitle="Excludes Transfers & $0 sales" icon={<Package className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-        <KPICard title="Avg Sale Price" value={formatCurrency(unitsCount > 0 ? grossSales / unitsCount : 0)} subtitle="Gross Sales / Units" icon={<TrendingUp className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-      </div>
+      {subTab === 'drp' ? (
+        <DRPPerformance salesData={salesData} isLoading={salesLoading} />
+      ) : (
+        <>
+          {/* Main KPI Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <KPICard title="Gross Sales" value={formatCurrency(grossSales)} subtitle="Never reduced by fees or refunds" icon={<DollarSign className="h-5 w-5" />} variant="success" isLoading={kpisLoading} />
+            <KPICard title="Recovery Rate" value={`${recoveryRate.toFixed(1)}%`} subtitle="Gross Sales / Effective Retail" icon={<Percent className="h-5 w-5" />} variant="info" isLoading={kpisLoading} />
+            <KPICard title="Units Sold" value={unitsCount.toLocaleString()} subtitle="Excludes Transfers & $0 sales" icon={<Package className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+            <KPICard title="Avg Sale Price" value={formatCurrency(unitsCount > 0 ? grossSales / unitsCount : 0)} subtitle="Gross Sales / Units" icon={<TrendingUp className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+          </div>
 
-      {/* Gross Sales Integrity Info */}
-      <div className="bg-success/10 border border-success/20 rounded-lg p-4">
-        <h4 className="font-medium text-success flex items-center gap-2">
-          <DollarSign className="h-4 w-4" />
-          Gross Sales Integrity
-        </h4>
-        <p className="text-sm text-muted-foreground mt-1">
-          Gross Sales = SUM(Sale Price with Discount Applied). This value is never reduced by fees or refunds 
-          to maintain operational reporting accuracy.
-        </p>
-      </div>
+          {/* Gross Sales Integrity Info */}
+          <div className="bg-success/10 border border-success/20 rounded-lg p-4">
+            <h4 className="font-medium text-success flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Gross Sales Integrity
+            </h4>
+            <p className="text-sm text-muted-foreground mt-1">
+              Gross Sales = SUM(Sale Price with Discount Applied). This value is never reduced by fees or refunds 
+              to maintain operational reporting accuracy.
+            </p>
+          </div>
 
-      {/* Monthly Sales Chart with Marketplace Breakdown */}
-      <div className="bg-card rounded-lg border p-6">
-        <h3 className="text-lg font-semibold mb-6">{chartMonthLabel ? `${chartMonthLabel} Sales (WM Fiscal Week)` : 'Sales by Marketplace (WM Fiscal Week)'}</h3>
-        
-        {chartLoading ? (
-          <div className="h-[450px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
-        ) : chartData.length > 0 ? (
-          <div className="h-[450px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" opacity={0.4} />
-                <XAxis 
-                  dataKey="wmWeek" 
-                  tickFormatter={(wk) => `WK ${wk}`}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                />
-                <YAxis yAxisId="left" tickFormatter={formatCurrency} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
-                  labelFormatter={(wk) => `WM Fiscal Week ${wk}`}
-                  formatter={(value: number, name: string, props: any) => {
-                    if (name === 'recoveryRate') return [`${value.toFixed(1)}%`, 'Recovery Rate'];
-                    const pct = props.payload[`${name}_pct`];
-                    return [`${formatCurrency(value)} (${pct?.toFixed(1) || 0}%)`, name];
-                  }}
-                />
-                <Legend formatter={(value) => value === 'recoveryRate' ? 'Recovery Rate' : value} />
-                {marketplaceList.map((marketplace, index) => {
-                  const showInlineLabel = ['Walmart Marketplace', 'eBay', 'Walmart DSV'].includes(marketplace);
-                  return (
-                    <Bar 
-                      key={marketplace} yAxisId="left" dataKey={marketplace} stackId="sales"
-                      fill={getMarketplaceColor(marketplace, index)} name={marketplace}
-                      radius={index === marketplaceList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                    >
-                      {showInlineLabel && (
-                        <LabelList 
-                          dataKey={marketplace} 
-                          position="inside"
-                          content={(props: any) => {
-                            const { x, y, width, height, value } = props;
-                            if (!value || value < 50000 || !height || height < 16 || !width || width < 30) return null;
-                            let label = '';
-                            if (value >= 1000000) label = `$${(value / 1000000).toFixed(2)}M`;
-                            else if (value >= 1000) label = `$${(value / 1000).toFixed(2)}K`;
-                            else label = `$${value.toFixed(2)}`;
-                            return (
-                              <text
-                                x={x + width / 2}
-                                y={y + height / 2}
-                                textAnchor="middle"
-                                dominantBaseline="central"
-                                fill="#ffffff"
-                                fontSize={height < 22 ? 9 : 10}
-                                fontWeight={700}
-                                style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)', pointerEvents: 'none' }}
-                              >
-                                {label}
-                              </text>
-                            );
-                          }}
-                        />
-                      )}
-                      {index === marketplaceList.length - 1 && (
-                        <LabelList dataKey="grossSales" position="top" 
-                          formatter={(value: number) => { if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`; if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`; return `$${value.toFixed(2)}`; }}
-                          fill="hsl(var(--foreground))" fontSize={12} fontWeight={700}
-                        />
-                      )}
-                    </Bar>
-                  );
-                })}
-                <Line yAxisId="right" type="monotone" dataKey="recoveryRate" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 5 }} activeDot={{ r: 7, strokeWidth: 2 }} name="recoveryRate" isAnimationActive={false}>
-                  <LabelList 
-                    dataKey="recoveryRate" 
-                    position="top" 
-                    content={(props: any) => {
-                      const { x, y, value } = props;
-                      if (value == null) return null;
+          {/* Monthly Sales Chart with Marketplace Breakdown */}
+          <div className="bg-card rounded-lg border p-6">
+            <h3 className="text-lg font-semibold mb-6">{chartMonthLabel ? `${chartMonthLabel} Sales (WM Fiscal Week)` : 'Sales by Marketplace (WM Fiscal Week)'}</h3>
+            
+            {chartLoading ? (
+              <div className="h-[450px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
+            ) : chartData.length > 0 ? (
+              <div className="h-[450px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" opacity={0.4} />
+                    <XAxis 
+                      dataKey="wmWeek" 
+                      tickFormatter={(wk) => `WK ${wk}`}
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    />
+                    <YAxis yAxisId="left" tickFormatter={formatCurrency} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                    <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
+                      labelFormatter={(wk) => `WM Fiscal Week ${wk}`}
+                      formatter={(value: number, name: string, props: any) => {
+                        if (name === 'recoveryRate') return [`${value.toFixed(1)}%`, 'Recovery Rate'];
+                        const pct = props.payload[`${name}_pct`];
+                        return [`${formatCurrency(value)} (${pct?.toFixed(1) || 0}%)`, name];
+                      }}
+                    />
+                    <Legend formatter={(value) => value === 'recoveryRate' ? 'Recovery Rate' : value} />
+                    {marketplaceList.map((marketplace, index) => {
+                      const showInlineLabel = ['Walmart Marketplace', 'eBay', 'Walmart DSV'].includes(marketplace);
                       return (
-                        <text
-                          x={x}
-                          y={y - 14}
-                          textAnchor="middle"
-                          fill="hsl(var(--primary))"
-                          fontSize={11}
-                          fontWeight={700}
-                          style={{ textShadow: '0 0 4px hsl(var(--background)), 0 0 4px hsl(var(--background))' }}
+                        <Bar 
+                          key={marketplace} yAxisId="left" dataKey={marketplace} stackId="sales"
+                          fill={getMarketplaceColor(marketplace, index)} name={marketplace}
+                          radius={index === marketplaceList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         >
-                          {`${Number(value).toFixed(1)}%`}
-                        </text>
+                          {showInlineLabel && (
+                            <LabelList 
+                              dataKey={marketplace} 
+                              position="inside"
+                              content={(props: any) => {
+                                const { x, y, width, height, value } = props;
+                                if (!value || value < 50000 || !height || height < 16 || !width || width < 30) return null;
+                                let label = '';
+                                if (value >= 1000000) label = `$${(value / 1000000).toFixed(2)}M`;
+                                else if (value >= 1000) label = `$${(value / 1000).toFixed(2)}K`;
+                                else label = `$${value.toFixed(2)}`;
+                                return (
+                                  <text
+                                    x={x + width / 2}
+                                    y={y + height / 2}
+                                    textAnchor="middle"
+                                    dominantBaseline="central"
+                                    fill="#ffffff"
+                                    fontSize={height < 22 ? 9 : 10}
+                                    fontWeight={700}
+                                    style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)', pointerEvents: 'none' }}
+                                  >
+                                    {label}
+                                  </text>
+                                );
+                              }}
+                            />
+                          )}
+                          {index === marketplaceList.length - 1 && (
+                            <LabelList dataKey="grossSales" position="top" 
+                              formatter={(value: number) => { if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`; if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`; return `$${value.toFixed(2)}`; }}
+                              fill="hsl(var(--foreground))" fontSize={12} fontWeight={700}
+                            />
+                          )}
+                        </Bar>
                       );
-                    }}
-                  />
-                </Line>
-              </ComposedChart>
-            </ResponsiveContainer>
+                    })}
+                    <Line yAxisId="right" type="monotone" dataKey="recoveryRate" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 5 }} activeDot={{ r: 7, strokeWidth: 2 }} name="recoveryRate" isAnimationActive={false}>
+                      <LabelList 
+                        dataKey="recoveryRate" 
+                        position="top" 
+                        content={(props: any) => {
+                          const { x, y, value } = props;
+                          if (value == null) return null;
+                          return (
+                            <text
+                              x={x}
+                              y={y - 14}
+                              textAnchor="middle"
+                              fill="hsl(var(--primary))"
+                              fontSize={11}
+                              fontWeight={700}
+                              style={{ textShadow: '0 0 4px hsl(var(--background)), 0 0 4px hsl(var(--background))' }}
+                            >
+                              {`${Number(value).toFixed(1)}%`}
+                            </text>
+                          );
+                        }}
+                      />
+                    </Line>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[400px] flex items-center justify-center text-muted-foreground">
+                No sales data available. Upload Monthly files to see metrics.
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="h-[400px] flex items-center justify-center text-muted-foreground">
-            No sales data available. Upload Monthly files to see metrics.
+
+          {/* Monthly Sales by Channel Pie Chart */}
+          <MonthlySalesPieChart salesData={salesData} isLoading={chartLoading} />
+
+          {/* Sales by Channel Breakdown Table */}
+          <MonthlySalesTable salesData={salesData} isLoading={chartLoading} />
+
+          {/* Refund Tracking */}
+          {refundTotal > 0 && (
+            <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-warning">Refund Exposure (Tracked Separately)</h4>
+                <p className="text-2xl font-bold mt-1">{formatCurrency(refundTotal)}</p>
+                <p className="text-sm text-muted-foreground mt-1">Refunds are tracked separately and never reduce the Gross Sales figures above.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Fee Components Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold">Fee Components (Invoiced Values)</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">Individual fee totals from invoiced values in the sales data.</p>
+            
+            <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-6">
+              <KPICard title="Check-In Fee" value={formatCurrency(checkInFeeTotal)} subtitle="invoiced_check_in_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Refurb Fee" value={formatCurrency(refurbFeeTotal)} subtitle="invoiced_refurb_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Overbox Fee" value={formatCurrency(overboxFeeTotal)} subtitle="invoiced_overbox_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Packaging Fee" value={formatCurrency(packagingFeeTotal)} subtitle="invoiced_packaging_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="PPS Fee" value={formatCurrency(ppsFeeTotal)} subtitle="invoiced_pps_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Shipping Fee" value={formatCurrency(shippingFeeTotal)} subtitle="invoiced_shipping_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Merchant Fee" value={formatCurrency(merchantFeeTotal)} subtitle="invoiced_merchant_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Revshare Fee" value={formatCurrency(revshareFeeTotal)} subtitle="invoiced_revshare_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="3PMP Fee" value={formatCurrency(threePMPFeeTotal)} subtitle="invoiced_3pmp_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Marketing Fee" value={formatCurrency(marketingFeeTotal)} subtitle="invoiced_marketing_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+              <KPICard title="Refund Fee" value={formatCurrency(refundFeeTotal)} subtitle="invoiced_refund_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Monthly Sales by Channel Pie Chart */}
-      <MonthlySalesPieChart salesData={salesData} isLoading={chartLoading} />
-
-      {/* Sales by Channel Breakdown Table */}
-      <MonthlySalesTable salesData={salesData} isLoading={chartLoading} />
-
-      {/* Refund Tracking */}
-      {refundTotal > 0 && (
-        <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
-          <div>
-            <h4 className="font-medium text-warning">Refund Exposure (Tracked Separately)</h4>
-            <p className="text-2xl font-bold mt-1">{formatCurrency(refundTotal)}</p>
-            <p className="text-sm text-muted-foreground mt-1">Refunds are tracked separately and never reduce the Gross Sales figures above.</p>
-          </div>
-        </div>
+        </>
       )}
-
-      {/* Fee Components Section */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Receipt className="h-5 w-5 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">Fee Components (Invoiced Values)</h3>
-        </div>
-        <p className="text-sm text-muted-foreground">Individual fee totals from invoiced values in the sales data.</p>
-        
-        <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-6">
-          <KPICard title="Check-In Fee" value={formatCurrency(checkInFeeTotal)} subtitle="invoiced_check_in_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Refurb Fee" value={formatCurrency(refurbFeeTotal)} subtitle="invoiced_refurb_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Overbox Fee" value={formatCurrency(overboxFeeTotal)} subtitle="invoiced_overbox_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Packaging Fee" value={formatCurrency(packagingFeeTotal)} subtitle="invoiced_packaging_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="PPS Fee" value={formatCurrency(ppsFeeTotal)} subtitle="invoiced_pps_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Shipping Fee" value={formatCurrency(shippingFeeTotal)} subtitle="invoiced_shipping_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Merchant Fee" value={formatCurrency(merchantFeeTotal)} subtitle="invoiced_merchant_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Revshare Fee" value={formatCurrency(revshareFeeTotal)} subtitle="invoiced_revshare_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="3PMP Fee" value={formatCurrency(threePMPFeeTotal)} subtitle="invoiced_3pmp_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Marketing Fee" value={formatCurrency(marketingFeeTotal)} subtitle="invoiced_marketing_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-          <KPICard title="Refund Fee" value={formatCurrency(refundFeeTotal)} subtitle="invoiced_refund_fee" icon={<Receipt className="h-5 w-5" />} variant="default" isLoading={kpisLoading} />
-        </div>
-      </div>
 
       <TabFileManager fileType="Monthly" onFilesChanged={refetch} />
       <MonthlyFileUploadZone onUploadComplete={refetch} />
