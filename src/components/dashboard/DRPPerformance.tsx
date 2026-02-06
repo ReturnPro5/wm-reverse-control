@@ -48,15 +48,16 @@ const formatPct = (v: number) => `${Math.round(v)}%`;
 
 const RADIAN = Math.PI / 180;
 function renderCustomLabel({ cx, cy, midAngle, outerRadius, percent, name, value }: any) {
-  if (percent < 0.02) return null;
-  const r = outerRadius + 32;
+  // Only label slices >= 5% to prevent overlap
+  if (percent < 0.05) return null;
+  const r = outerRadius + 24;
   const x = cx + r * Math.cos(-midAngle * RADIAN);
   const y = cy + r * Math.sin(-midAngle * RADIAN);
   const anchor = x > cx ? 'start' : 'end';
   return (
     <g>
-      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={14} fontWeight={600}>{name}</text>
-      <text x={x} y={y + 18} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={13}>
+      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={11} fontWeight={600}>{name}</text>
+      <text x={x} y={y + 14} textAnchor={anchor} dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={10}>
         {`${formatCurrency(value)} · ${(percent * 100).toFixed(1)}%`}
       </text>
     </g>
@@ -249,16 +250,18 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} DRP Sales by Channel</h3>
           {pieData.length > 0 ? (
-            <div className="h-[320px]">
+            <div className="h-[360px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={pieData}
                     cx="50%"
                     cy="45%"
-                    outerRadius={100}
-                    innerRadius={40}
+                    outerRadius={90}
+                    innerRadius={35}
                     dataKey="value"
+                    label={renderCustomLabel}
+                    labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
                     isAnimationActive={false}
                     paddingAngle={2}
                   >
@@ -266,8 +269,8 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                       <Cell key={entry.name} fill={getMarketplaceColor(entry.name, index)} stroke="hsl(var(--background))" strokeWidth={2} />
                     ))}
                   </Pie>
-                  <text x="50%" y="43%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={11}>Total</text>
-                  <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={16} fontWeight={700}>
+                  <text x="50%" y="43%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--muted-foreground))" fontSize={10}>Total</text>
+                  <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fill="hsl(var(--foreground))" fontSize={14} fontWeight={700}>
                     {formatCurrency(totalSales)}
                   </text>
                   <Tooltip
@@ -277,20 +280,12 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                       return [`${formatCurrency(value)} (${pct}%)`, name];
                     }}
                   />
-                  <Legend
-                    wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-                    formatter={(value: string, entry: any) => {
-                      const item = pieData.find(d => d.name === value);
-                      if (!item) return value;
-                      const pct = totalSales > 0 ? ((item.value / totalSales) * 100).toFixed(1) : '0.0';
-                      return `${value} · ${formatCurrency(item.value)} · ${pct}%`;
-                    }}
-                  />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[320px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
+            <div className="h-[360px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
           )}
         </div>
 
