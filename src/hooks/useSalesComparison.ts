@@ -5,6 +5,7 @@ import { Tables } from '@/integrations/supabase/types';
 import { addWalmartChannel, filterByWalmartChannel } from '@/lib/walmartChannel';
 import { SalesRecordWithChannel } from './useFilteredData';
 import { getWMFiscalYearStart } from '@/lib/wmWeek';
+import { mapMarketplace } from '@/lib/marketplaceMapping';
 
 /**
  * Hook to fetch sales data for TW, LW, and TWLY comparison.
@@ -94,9 +95,7 @@ export function useSalesComparison(tabName: TabName = 'sales') {
         }
         // WMUS exclusive - always filter to WMUS only
         query = query.eq('tag_clientsource', 'WMUS');
-        if (filters.marketplacesSoldOn.length > 0) {
-          query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
-        }
+        // NOTE: marketplace filter applied client-side after mapMarketplace()
         if (filters.orderTypesSoldOn.length > 0) {
           query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
         }
@@ -136,17 +135,24 @@ export function useSalesComparison(tabName: TabName = 'sales') {
           from += pageSize;
         }
 
-        // Client-side filtering: excluded files and owned programs (matches useFilteredSales)
+        // Client-side filtering: excluded files, owned programs, and marketplace (matches useFilteredSales)
         let filtered = allData.filter(row => 
           !row.file_upload_id || !filters.excludedFileIds.includes(row.file_upload_id)
         );
         filtered = filtered.filter(row => {
           const masterProgram = row.master_program_name?.toLowerCase() || '';
           if (!masterProgram.includes('owned')) return true;
-          // Allow "Owned Special Projects (Finished)" through
           if (masterProgram.includes('owned special projects')) return true;
           return false;
         });
+        
+        // Apply marketplace filter using mapped names
+        if (filters.marketplacesSoldOn.length > 0) {
+          filtered = filtered.filter(row => {
+            const mapped = mapMarketplace({ marketplace_profile_sold_on: row.marketplace_profile_sold_on ?? null });
+            return filters.marketplacesSoldOn.includes(mapped);
+          });
+        }
 
         return filtered;
       };

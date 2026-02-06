@@ -42,6 +42,45 @@ export const mapMarketplace = (sale: SaleRecord): string => {
   return marketplaceSoldOn;
 };
 
+// Given a list of raw DB marketplace values, return the unique mapped names
+export const getMappedMarketplaceOptions = (rawMarketplaces: string[]): string[] => {
+  const mapped = new Set<string>();
+  // Always include "Manual Sales" for null/blank/unknown values
+  mapped.add('Manual Sales');
+  rawMarketplaces.forEach(raw => {
+    const fakeSale: SaleRecord = { marketplace_profile_sold_on: raw };
+    mapped.add(mapMarketplace(fakeSale));
+  });
+  return Array.from(mapped).sort();
+};
+
+// Given selected mapped names, return all raw DB values that would map to them
+// (for use in DB queries). Returns null if empty selection.
+export const reverseMapMarketplaces = (
+  mappedNames: string[],
+  allRawMarketplaces: string[]
+): string[] | null => {
+  if (mappedNames.length === 0) return null;
+  
+  const result: string[] = [];
+  const needsNull = mappedNames.includes('Manual Sales');
+  
+  allRawMarketplaces.forEach(raw => {
+    const fakeSale: SaleRecord = { marketplace_profile_sold_on: raw };
+    const mapped = mapMarketplace(fakeSale);
+    if (mappedNames.includes(mapped)) {
+      result.push(raw);
+    }
+  });
+  
+  // "Manual Sales" also covers blank/null/unknown - add empty string
+  if (needsNull && !result.includes('')) {
+    result.push('');
+  }
+  
+  return result;
+};
+
 // Standard marketplace colors for consistent theming
 export const marketplaceColors: Record<string, string> = {
   'Walmart Marketplace': 'hsl(211, 100%, 43%)',

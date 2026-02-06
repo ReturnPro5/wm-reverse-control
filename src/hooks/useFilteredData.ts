@@ -4,6 +4,7 @@ import { useTabFilters, TabFilters, TabName } from '@/contexts/FilterContext';
 import { Tables } from '@/integrations/supabase/types';
 import { getWMWeekNumber, getWMDayOfWeek, getWMFiscalYearStart } from '@/lib/wmWeek';
 import { filterByWalmartChannel, addWalmartChannel, WalmartChannel } from '@/lib/walmartChannel';
+import { getMappedMarketplaceOptions, reverseMapMarketplaces, mapMarketplace as mapMp } from '@/lib/marketplaceMapping';
 
 // Calculate WM week from a date string (YYYY-MM-DD)
 function getWMWeekFromDateString(dateStr: string | null): number | null {
@@ -52,9 +53,8 @@ function applyFilters<T extends { eq: any; not: any; in: any }>(
   }
   // WMUS exclusive - always filter to WMUS only, ignore tagClientSources filter
   query = query.eq('tag_clientsource', 'WMUS');
-  if (filters.marketplacesSoldOn.length > 0) {
-    query = query.in('marketplace_profile_sold_on', filters.marketplacesSoldOn);
-  }
+  // NOTE: marketplace filter is applied client-side after mapMarketplace() transformation
+  // to ensure mapped names (e.g., "Manual Sales") work correctly
   if (filters.orderTypesSoldOn.length > 0) {
     query = query.in('order_type_sold_on', filters.orderTypesSoldOn);
   }
@@ -89,18 +89,28 @@ function filterOwnedPrograms<T extends { master_program_name?: string | null }>(
   });
 }
 
+// Filter by mapped marketplace names (client-side, after fetching)
+function filterByMappedMarketplace<T extends { marketplace_profile_sold_on?: string | null }>(
+  data: T[],
+  selectedMappedNames: string[]
+): T[] {
+  if (selectedMappedNames.length === 0) return data;
+  return data.filter(row => {
+    const mapped = mapMp({ marketplace_profile_sold_on: row.marketplace_profile_sold_on ?? null });
+    return selectedMappedNames.includes(mapped);
+  });
+}
+
 export function useFilterOptions() {
   return useQuery({
     queryKey: ['filter-options-global'],
-    staleTime: 5 * 60 * 1000, // 5 minutes - matches other queries
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      // Use optimized RPC that gets all distinct values in a single query
       const { data, error } = await supabase.rpc('get_filter_options');
       
       if (error) throw error;
       
-      // Parse the JSON response
       const options = data as {
         programs: string[];
         masterPrograms: string[];
@@ -114,6 +124,8 @@ export function useFilterOptions() {
         orderTypes: string[];
       };
 
+      const rawMarketplaces = options.marketplaces || [];
+
       return {
         programs: options.programs || [],
         masterPrograms: options.masterPrograms || [],
@@ -122,7 +134,10 @@ export function useFilterOptions() {
         locations: options.locations || [],
         ownerships: options.ownerships || [],
         clientSources: options.clientSources || [],
-        marketplaces: options.marketplaces || [],
+        // Show mapped marketplace names in filters
+        marketplaces: getMappedMarketplaceOptions(rawMarketplaces),
+        // Keep raw values for reverse-mapping when querying
+        rawMarketplaces,
         fileTypes: options.fileTypes || [],
         orderTypes: options.orderTypes || [],
       };
@@ -344,8 +359,11 @@ export function useFilteredSales(tabName: TabName = 'sales') {
       const filteredByFiles = filterExcludedFiles(allData, filters.excludedFileIds);
       const filteredNoOwned = filterOwnedPrograms(filteredByFiles);
       
+      // Apply marketplace filter client-side (uses mapped names like "Manual Sales")
+      const filteredByMarketplace = filterByMappedMarketplace(filteredNoOwned, filters.marketplacesSoldOn);
+      
       // Apply Walmart Channel filter (Sales tabs only)
-      const filteredByChannel = filterByWalmartChannel(filteredNoOwned, filters.walmartChannels);
+      const filteredByChannel = filterByWalmartChannel(filteredByMarketplace, filters.walmartChannels);
       
       // Add derived walmartChannel to each record for use in visualizations
       return addWalmartChannel(filteredByChannel);
