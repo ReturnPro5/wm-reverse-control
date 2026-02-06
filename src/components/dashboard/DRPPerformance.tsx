@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ZAxis, LabelList } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, ZAxis, LabelList, ReferenceLine } from 'recharts';
 import { mapMarketplace, getMarketplaceColor } from '@/lib/marketplaceMapping';
 
 const DRP_PROGRAMS = [
@@ -159,6 +159,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
   const totalRetailActual = drpData.reduce((s, r) => s + (r.effective_retail || 0), 0);
   const totalGrossRoR = totalRetailActual > 0 ? (totalSales / totalRetailActual) * 100 : 0;
   const totalUnits = drpData.length;
+  const weightedAvgASP = totalUnits > 0 ? totalSales / totalUnits : 0;
 
   // Pie data
   const pieData = channelStats.filter(c => c.sales > 0).map(c => ({ name: c.channel, value: c.sales }));
@@ -322,6 +323,14 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart margin={{ top: 80, right: 60, bottom: 55, left: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                   <ReferenceLine
+                     y={weightedAvgASP}
+                     stroke="hsl(var(--muted-foreground))"
+                     strokeDasharray="6 4"
+                     strokeWidth={1}
+                     strokeOpacity={0.5}
+                     label={{ value: `Weighted B2C ASP: ${formatFullDollar(weightedAvgASP)}`, position: 'right', fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 500 }}
+                   />
                   <XAxis
                     type="number"
                     dataKey="units"
