@@ -75,11 +75,16 @@ export function MonthlyTab() {
     }
   });
 
-  const allMarketplaces = new Set<string>();
+  const marketplaceTotals: Record<string, number> = {};
   Object.values(weeklyData).forEach(d => {
-    Object.keys(d.marketplaces).forEach(m => allMarketplaces.add(m));
+    Object.entries(d.marketplaces).forEach(([m, val]) => {
+      marketplaceTotals[m] = (marketplaceTotals[m] || 0) + val;
+    });
   });
-  const marketplaceList = Array.from(allMarketplaces).sort();
+  const marketplaceList = Object.entries(marketplaceTotals)
+    .filter(([, total]) => total > 0)
+    .map(([m]) => m)
+    .sort();
 
   const chartData = Object.values(weeklyData)
     .map(d => {
