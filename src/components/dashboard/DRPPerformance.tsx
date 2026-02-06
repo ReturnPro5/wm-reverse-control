@@ -275,7 +275,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} DRP Sales by Channel</h3>
           {pieData.length > 0 ? (
-            <div className="h-[400px]">
+            <div className="h-[340px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -310,7 +310,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[400px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
+            <div className="h-[340px] flex items-center justify-center text-muted-foreground">No channel data available.</div>
           )}
         </div>
 
@@ -318,9 +318,9 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
         <div className="bg-card rounded-lg border p-5">
           <h3 className="text-base font-semibold mb-4 tracking-tight">{dynamicTitle} Avg Sale Price vs Units</h3>
           {crossBuckets.length > 0 ? (
-            <div className="h-[580px]">
+            <div className="h-[420px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 130, right: 100, bottom: 55, left: 50 }}>
+                <ScatterChart margin={{ top: 80, right: 60, bottom: 55, left: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis
                     type="number"
@@ -398,7 +398,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-[580px] flex items-center justify-center text-muted-foreground">No data available.</div>
+            <div className="h-[420px] flex items-center justify-center text-muted-foreground">No data available.</div>
           )}
         </div>
       </div>
