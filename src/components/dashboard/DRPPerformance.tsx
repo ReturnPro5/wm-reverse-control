@@ -397,10 +397,10 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                             <g transform={`translate(${endX}, ${endY})`}>
                               <g transform="rotate(-55)">
                                 <text x={4} y={0} textAnchor="start" fill="hsl(var(--foreground))" fontSize={14} fontWeight={700} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={5} strokeLinejoin="round">
-                                  {entry.channel} · {entry.facility}
+                                  {entry.channel}: {entry.units >= 1000 ? `${(entry.units / 1000).toFixed(1)}K` : entry.units} units @ {formatFullDollar(entry.avgSalePrice)} ASP
                                 </text>
                                 <text x={4} y={16} textAnchor="start" fill="hsl(var(--muted-foreground))" fontSize={12} fontWeight={500} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={5} strokeLinejoin="round">
-                                  {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
+                                  {entry.facility} · {formatCurrency(entry.sales)}
                                 </text>
                               </g>
                             </g>
