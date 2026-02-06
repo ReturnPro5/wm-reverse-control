@@ -414,19 +414,7 @@ export type Database = {
           sold_same_week_sales: number
         }[]
       }
-      get_monthly_chart_data:
-        | {
-            Args: { p_file_ids?: string[] }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.get_monthly_chart_data(p_file_ids => _text), public.get_monthly_chart_data(p_file_ids => _uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
-        | {
-            Args: { p_file_ids?: string[] }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.get_monthly_chart_data(p_file_ids => _text), public.get_monthly_chart_data(p_file_ids => _uuid). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
+      get_monthly_chart_data: { Args: { p_file_ids?: string[] }; Returns: Json }
       get_monthly_kpis: { Args: { p_file_ids?: string[] }; Returns: Json }
       get_wm_day_of_week: { Args: { p_date: string }; Returns: number }
       get_wm_week_date_range: {
