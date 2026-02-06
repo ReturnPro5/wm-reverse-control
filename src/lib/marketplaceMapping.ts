@@ -10,8 +10,8 @@ export interface SaleRecord {
 export const mapMarketplace = (sale: SaleRecord): string => {
   const marketplaceSoldOn = sale.marketplace_profile_sold_on;
   
-  // If blank/null → "Manual Sales"
-  if (!marketplaceSoldOn || marketplaceSoldOn.trim() === '') return 'Manual Sales';
+  // If blank/null/unknown → "Manual Sales"
+  if (!marketplaceSoldOn || marketplaceSoldOn.trim() === '' || marketplaceSoldOn.toLowerCase() === 'unknown') return 'Manual Sales';
   
   const lower = marketplaceSoldOn.toLowerCase();
   
