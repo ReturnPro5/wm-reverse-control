@@ -320,7 +320,7 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
           {crossBuckets.length > 0 ? (
             <div className="h-[520px]">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 20, right: 50, bottom: 55, left: 50 }}>
+                <ScatterChart margin={{ top: 60, right: 50, bottom: 55, left: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis
                     type="number"
@@ -364,29 +364,17 @@ export function DRPPerformance({ salesData, isLoading }: DRPPerformanceProps) {
                         if (!entry) return null;
                         const px = Number(x);
                         const py = Number(y);
-                        // Place labels in a neat right-side column, evenly spaced vertically
-                        // Use consistent X position near right margin, stagger Y
-                        const labelX = px;
-                        const labelY = 30 + idx * 34;
-                        // Anchor text to the left if dot is in right half, else to the right
-                        const textAnchor = px > 400 ? 'end' : 'start';
-                        const adjustedLabelX = px > 400 ? labelX - 14 : labelX + 14;
+                        const angle = -35;
                         return (
-                          <g>
-                            <line
-                              x1={px} y1={py - 8}
-                              x2={adjustedLabelX + (px > 400 ? 30 : -10)} y2={labelY + 10}
-                              stroke="hsl(var(--muted-foreground))"
-                              strokeWidth={1}
-                              strokeDasharray="4 2"
-                              opacity={0.35}
-                            />
-                            <text x={adjustedLabelX} y={labelY} textAnchor={textAnchor} fill="hsl(var(--foreground))" fontSize={14} fontWeight={700}>
-                              {entry.channel} · {entry.facility}
-                            </text>
-                            <text x={adjustedLabelX} y={labelY + 15} textAnchor={textAnchor} fill="hsl(var(--muted-foreground))" fontSize={12} fontWeight={500}>
-                              {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
-                            </text>
+                          <g transform={`translate(${px}, ${py - 18})`}>
+                            <g transform={`rotate(${angle})`}>
+                              <text x={0} y={0} textAnchor="start" fill="hsl(var(--foreground))" fontSize={14} fontWeight={700} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={3} strokeLinejoin="round">
+                                {entry.channel} · {entry.facility}
+                              </text>
+                              <text x={0} y={16} textAnchor="start" fill="hsl(var(--muted-foreground))" fontSize={12} fontWeight={500} paintOrder="stroke" stroke="hsl(var(--card))" strokeWidth={3} strokeLinejoin="round">
+                                {`${formatCurrency(entry.sales)} · ${formatFullDollar(entry.avgSalePrice)}/u`}
+                              </text>
+                            </g>
                           </g>
                         );
                       }}
