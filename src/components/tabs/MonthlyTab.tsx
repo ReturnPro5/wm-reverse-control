@@ -159,12 +159,12 @@ export function MonthlyTab() {
         <h3 className="text-lg font-semibold mb-6">Weekly Sales & Recovery by Marketplace (WM Fiscal Week)</h3>
         
         {chartLoading ? (
-          <div className="h-[400px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
+          <div className="h-[450px] flex items-center justify-center text-muted-foreground">Loading chart data...</div>
         ) : chartData.length > 0 ? (
-          <div className="h-[400px]">
+          <div className="h-[450px]">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <ComposedChart data={chartData} margin={{ top: 30, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" opacity={0.4} />
                 <XAxis 
                   dataKey="wmWeek" 
                   tickFormatter={(wk) => `WK ${wk}`}
@@ -182,22 +182,49 @@ export function MonthlyTab() {
                   }}
                 />
                 <Legend formatter={(value) => value === 'recoveryRate' ? 'Recovery Rate' : value} />
-                {marketplaceList.map((marketplace, index) => (
-                  <Bar 
-                    key={marketplace} yAxisId="left" dataKey={marketplace} stackId="sales"
-                    fill={getMarketplaceColor(marketplace, index)} name={marketplace}
-                    radius={index === marketplaceList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                  >
-                    {index === marketplaceList.length - 1 && (
-                      <LabelList dataKey="grossSales" position="top" 
-                        formatter={(value: number) => { if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`; if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`; return `$${value.toFixed(0)}`; }}
-                        fill="hsl(var(--foreground))" fontSize={11} fontWeight={600}
-                      />
-                    )}
-                  </Bar>
-                ))}
-                <Line yAxisId="right" type="monotone" dataKey="recoveryRate" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2 }} name="recoveryRate">
-                  <LabelList dataKey="recoveryRate" position="top" formatter={(value: number) => `${value.toFixed(0)}%`} fill="hsl(var(--primary))" fontSize={10} fontWeight={500} offset={8} />
+                {marketplaceList.map((marketplace, index) => {
+                  const showInlineLabel = ['Walmart Marketplace', 'eBay', 'Walmart DSV'].includes(marketplace);
+                  return (
+                    <Bar 
+                      key={marketplace} yAxisId="left" dataKey={marketplace} stackId="sales"
+                      fill={getMarketplaceColor(marketplace, index)} name={marketplace}
+                      radius={index === marketplaceList.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                    >
+                      {showInlineLabel && (
+                        <LabelList 
+                          dataKey={marketplace} 
+                          position="inside"
+                          formatter={(value: number) => {
+                            if (value < 1000) return '';
+                            if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+                            if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+                            return `$${value.toFixed(0)}`;
+                          }}
+                          fill="#ffffff"
+                          fontSize={10}
+                          fontWeight={700}
+                          style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+                        />
+                      )}
+                      {index === marketplaceList.length - 1 && (
+                        <LabelList dataKey="grossSales" position="top" 
+                          formatter={(value: number) => { if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`; if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`; return `$${value.toFixed(0)}`; }}
+                          fill="hsl(var(--foreground))" fontSize={12} fontWeight={700}
+                        />
+                      )}
+                    </Bar>
+                  );
+                })}
+                <Line yAxisId="right" type="monotone" dataKey="recoveryRate" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }} name="recoveryRate">
+                  <LabelList 
+                    dataKey="recoveryRate" 
+                    position="top" 
+                    formatter={(value: number) => `${value.toFixed(1)}%`} 
+                    fill="hsl(var(--primary))" 
+                    fontSize={12} 
+                    fontWeight={700} 
+                    offset={10} 
+                  />
                 </Line>
               </ComposedChart>
             </ResponsiveContainer>
